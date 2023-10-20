@@ -2,7 +2,7 @@ use std::fs::read_to_string;
 use std::path::PathBuf;
 use std::process::Command;
 
-static CBINDGEN_PATH: &str = env!("CARGO_BIN_EXE_cbindgen");
+static CBINDGEN_PATH: &str = env!("CARGO_BIN_EXE_nbindgen");
 
 fn test_project(project_path: &str) {
     let mut cmake_cmd = Command::new("cmake");
@@ -18,7 +18,7 @@ fn test_project(project_path: &str) {
     }
     let project_dir = PathBuf::from(project_path);
 
-    let cbindgen_define = format!("-DCBINDGEN_PATH={CBINDGEN_PATH}");
+    let cbindgen_define = format!("-DCBINDGEN_PATH={}", CBINDGEN_PATH);
     cmake_configure
         .arg("-S")
         .arg(project_path)
@@ -30,7 +30,9 @@ fn test_project(project_path: &str) {
     let stderr_str = String::from_utf8(output.stderr).unwrap();
     assert!(
         output.status.success(),
-        "Configuring test project failed: stdout: `{stdout_str}`, stderr: `{stderr_str}`"
+        "Configuring test project failed: stdout: `{}`, stderr: `{}`",
+        stdout_str,
+        stderr_str
     );
     let depfile_path = build_dir.join("depfile.d");
     assert!(
@@ -42,14 +44,13 @@ fn test_project(project_path: &str) {
     let mut cmake_build = Command::new("cmake");
     cmake_build.arg("--build").arg(&build_dir);
     let output = cmake_build.output().expect("Failed to execute process");
-    assert!(
-        output.status.success(),
-        "Building test project failed: {output:?}"
-    );
+    print!("{:?}", std::str::from_utf8(&output.stderr));
+    assert!(output.status.success(), "Building test project failed");
     let out_str = String::from_utf8(output.stdout).unwrap();
     assert!(
         out_str.contains("Running cbindgen"),
-        "cbindgen rule did not run. Output: {out_str}"
+        "cbindgen rule did not run. Output: {}",
+        out_str
     );
 
     assert!(
@@ -85,10 +86,7 @@ fn test_project(project_path: &str) {
     assert_eq!(dep_list, expected_dep_list);
 
     let output = cmake_build.output().expect("Failed to execute process");
-    assert!(
-        output.status.success(),
-        "Building test project failed: {output:?}"
-    );
+    assert!(output.status.success(), "Building test project failed");
     let out_str = String::from_utf8(output.stdout).unwrap();
     assert!(
         !out_str.contains("Running cbindgen"),

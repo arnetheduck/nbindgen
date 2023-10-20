@@ -179,7 +179,7 @@ impl Function {
         for arg in &mut self.args {
             arg.ty.rename_for_config(config, &generic_params);
             if let Some(ref mut name) = arg.name {
-                reserved::escape(name);
+                reserved::escape(config, name);
             }
         }
 

@@ -281,10 +281,9 @@ impl Condition {
                 out.write("(");
                 for (i, condition) in conditions.iter().enumerate() {
                     if i != 0 {
-                        out.write(if config.language == Language::Cython {
-                            " or "
-                        } else {
-                            " || "
+                        out.write(match config.language {
+                            Language::Cython | Language::Nim => " or ",
+                            _ => " || ",
                         });
                     }
                     condition.write(config, out);
@@ -295,10 +294,9 @@ impl Condition {
                 out.write("(");
                 for (i, condition) in conditions.iter().enumerate() {
                     if i != 0 {
-                        out.write(if config.language == Language::Cython {
-                            " and "
-                        } else {
-                            " && "
+                        out.write(match config.language {
+                            Language::Cython | Language::Nim => " and ",
+                            _ => " && ",
                         });
                     }
                     condition.write(config, out);
@@ -306,12 +304,17 @@ impl Condition {
                 out.write(")");
             }
             Condition::Not(ref condition) => {
-                out.write(if config.language == Language::Cython {
-                    "not "
+                if config.language == Language::Cython {
+                    out.write("not ");
+                    condition.write(config, out);
+                } else if config.language == Language::Nim {
+                    out.write("not (");
+                    condition.write(config, out);
+                    out.write(")");
                 } else {
-                    "!"
-                });
-                condition.write(config, out);
+                    out.write("!");
+                    condition.write(config, out);
+                }
             }
         }
     }
@@ -329,6 +332,12 @@ impl ConditionWrite for Option<Condition> {
                 out.write("IF ");
                 cfg.write(config, out);
                 out.open_brace();
+            } else if config.language == Language::Nim {
+                out.write("when ");
+                cfg.write(config, out);
+                out.write(":");
+                out.new_line();
+                out.open_brace();
             } else {
                 out.push_set_spaces(0);
                 out.write("#if ");
@@ -343,6 +352,9 @@ impl ConditionWrite for Option<Condition> {
         if self.is_some() {
             if config.language == Language::Cython {
                 out.close_brace(false);
+            } else if config.language == Language::Nim {
+                out.close_brace(false);
+                out.new_line();
             } else {
                 out.new_line();
                 out.push_set_spaces(0);

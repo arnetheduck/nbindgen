@@ -2,16 +2,16 @@
 pub static NUMBER: i32 = 10;
 
 #[repr(C)]
-struct Foo {
+struct TFoo {
 }
 
-struct Bar {
+struct TBar {
 }
 
 #[no_mangle]
-pub static mut FOO: Foo = Foo { };
+pub static mut FOO: TFoo = TFoo { };
 #[no_mangle]
-pub static BAR: Bar = Bar { };
+pub static BAR: TBar = TBar { };
 
 #[no_mangle]
 pub extern "C" fn root() { }

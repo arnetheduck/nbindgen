@@ -527,7 +527,7 @@ impl Item for Enum {
         }
 
         for variant in &mut self.variants {
-            reserved::escape(&mut variant.export_name);
+            reserved::escape(config, &mut variant.export_name);
             if let Some(discriminant) = &mut variant.discriminant {
                 discriminant.rename_for_config(config);
             }
@@ -538,7 +538,7 @@ impl Item for Enum {
             } = variant.body
             {
                 body.rename_for_config(config);
-                reserved::escape(name);
+                reserved::escape(config, name);
             }
         }
 
@@ -744,6 +744,7 @@ impl Enum {
                     write!(out, "{}enum {}", config.style.cython_def(), tag_name);
                 }
             }
+            Language::Nim => {}
         }
         out.open_brace();
 
@@ -820,6 +821,7 @@ impl Enum {
             Language::C if config.style.generate_typedef() => out.write("typedef "),
             Language::C | Language::Cxx => {}
             Language::Cython => out.write(config.style.cython_def()),
+            Language::Nim => {}
         }
 
         out.write(if inline_tag_field { "union" } else { "struct" });

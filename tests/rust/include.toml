@@ -1,1 +1,1 @@
-sys_includes = ["math.h"]
+imports = ["math"]

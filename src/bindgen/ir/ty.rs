@@ -222,6 +222,47 @@ impl PrimitiveType {
         }
     }
 
+    pub(crate) fn to_repr_nim(&self, _config: &Config) -> &'static str {
+        match *self {
+            PrimitiveType::Void => "void",
+            PrimitiveType::Bool => "bool",
+            PrimitiveType::Char => "char",
+            PrimitiveType::SChar => "int8",
+            PrimitiveType::UChar => "char",
+            PrimitiveType::Char32 => "uint32",
+            PrimitiveType::Integer {
+                kind,
+                signed,
+                zeroable: _,
+            } => match (kind, signed) {
+                (IntKind::Short, true) => "cshort",
+                (IntKind::Short, false) => "cushort",
+                (IntKind::Int, true) => "cint",
+                (IntKind::Int, false) => "cuint",
+                (IntKind::Long, true) => "clong",
+                (IntKind::Long, false) => "culong",
+                (IntKind::LongLong, true) => "clonglong",
+                (IntKind::LongLong, false) => "culonglong",
+                (IntKind::SizeT, true) => "int",
+                (IntKind::SizeT, false) => "csize_t",
+                (IntKind::Size, true) => "int",
+                (IntKind::Size, false) => "uint",
+                (IntKind::B8, true) => "int8",
+                (IntKind::B8, false) => "uint8",
+                (IntKind::B16, true) => "int16",
+                (IntKind::B16, false) => "uint16",
+                (IntKind::B32, true) => "int32",
+                (IntKind::B32, false) => "uint32",
+                (IntKind::B64, true) => "int64",
+                (IntKind::B64, false) => "uint64",
+            },
+            PrimitiveType::Float => "float32",
+            PrimitiveType::Double => "float64",
+            PrimitiveType::PtrDiffT => "int",
+            PrimitiveType::VaList => "va_list",
+        }
+    }
+
     fn can_cmp_order(&self) -> bool {
         !matches!(*self, PrimitiveType::Bool)
     }

@@ -1,0 +1,78 @@
+name: nbindgen
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  merge_group:
+    branches:
+      - master
+
+jobs:
+  rustfmt-clippy:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install stable
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: "clippy, rustfmt"
+
+    - name: Run rustfmt
+      run: |
+        cargo +stable fmt --check
+
+    - name: Run clippy
+      run: |
+        cargo +stable clippy --workspace -- -D warnings
+
+    - name: Install minimum supported Rust version
+      id: msrv
+      uses: dtolnay/rust-toolchain@1.85
+
+    - name: Build with minimum supported Rust version
+      env:
+        NAME: ${{steps.msrv.outputs.name}}
+      run: |
+        cargo +$NAME test nonexistent-test --locked --verbose
+
+  # Build and run the Nim test suite. The suite generates bindings for every
+  # test input and runs `nim check` on the result, so Nim must be installed.
+  test:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install nightly Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - uses: jiro4989/setup-nim-action@v2
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Test
+      env:
+        CBINDGEN_TEST_VERIFY: 1
+      run: |
+        cargo +nightly test --locked --verbose
+
+  # One job that "summarizes" the success state of this pipeline. This can then
+  # be added to branch protection, rather than having to add each job
+  # separately.
+  success:
+    runs-on: ubuntu-24.04
+    needs: [rustfmt-clippy, test]
+    # GitHub branch protection is exceedingly silly and treats "jobs skipped
+    # because a dependency failed" as success. So we have to do some
+    # contortions to ensure the job fails if any of its dependencies fails.
+    if: always() # make sure this is never "skipped"
+    steps:
+      # Manually check the status of all dependencies. `if: failure()` does not work.
+      - name: check if any dependency failed
+        run: jq --exit-status 'all(.result == "success")' <<< '${{ toJson(needs) }}'

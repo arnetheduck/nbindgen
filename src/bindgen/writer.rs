@@ -177,6 +177,9 @@ impl<'a, F: Write> SourceWriter<'a, F> {
                 self.new_line();
                 self.push_tab();
             }
+            Language::Nim => {
+                self.push_set_spaces(self.spaces() + 2);
+            }
         }
     }
 
@@ -192,6 +195,7 @@ impl<'a, F: Write> SourceWriter<'a, F> {
                 }
             }
             Language::Cython => {}
+            Language::Nim => {}
         }
     }
 
