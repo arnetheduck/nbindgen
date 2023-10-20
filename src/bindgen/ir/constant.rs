@@ -951,6 +951,10 @@ impl Constant {
                 write!(out, " # = ");
                 language_backend.write_literal(out, value);
             }
+            Language::Nim => {
+                write!(out, "const {}* = ", name);
+                language_backend.write_literal(out, value);
+            }
         }
 
         condition.write_after(config, out);

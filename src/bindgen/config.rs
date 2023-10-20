@@ -23,6 +23,7 @@ pub enum Language {
     Cxx,
     C,
     Cython,
+    Nim,
 }
 
 impl FromStr for Language {
@@ -42,6 +43,9 @@ impl FromStr for Language {
             "C" => Ok(Language::C),
             "cython" => Ok(Language::Cython),
             "Cython" => Ok(Language::Cython),
+            "nim" => Ok(Language::Nim),
+            "Nim" => Ok(Language::Nim),
+            "NIM" => Ok(Language::Nim),
             _ => Err(format!("Unrecognized Language: '{s}'.")),
         }
     }
@@ -54,6 +58,7 @@ impl Language {
         match self {
             Language::Cxx | Language::C => "typedef",
             Language::Cython => "ctypedef",
+            Language::Nim => "type",
         }
     }
 }
@@ -877,6 +882,8 @@ pub struct Config {
     pub includes: Vec<String>,
     /// A list of additional system includes to put at the beginning of the generated header
     pub sys_includes: Vec<String>,
+    /// A list of imports to put at the beginning of the generated file (Nim)
+    pub imports: Vec<String>,
     /// Optional verbatim code added after the include blocks
     pub after_includes: Option<String>,
     /// Optional text to output at the end of the file
@@ -1006,6 +1013,7 @@ impl Default for Config {
             header: None,
             includes: Vec::new(),
             sys_includes: Vec::new(),
+            imports: Vec::new(),
             after_includes: None,
             trailer: None,
             include_guard: None,
@@ -1021,7 +1029,7 @@ impl Default for Config {
             line_length: 100,
             tab_width: 2,
             line_endings: LineEndingStyle::default(),
-            language: Language::Cxx,
+            language: Language::Nim,
             cpp_compat: false,
             style: Style::default(),
             usize_is_size_t: false,

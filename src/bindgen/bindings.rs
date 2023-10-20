@@ -17,7 +17,7 @@ use crate::bindgen::ir::{
     Typedef,
 };
 use crate::bindgen::language_backend::{
-    CLikeLanguageBackend, CythonLanguageBackend, LanguageBackend,
+    CLikeLanguageBackend, CythonLanguageBackend, LanguageBackend, NimLanguageBackend,
 };
 use crate::bindgen::writer::SourceWriter;
 
@@ -270,6 +270,9 @@ impl Bindings {
             }
             Language::Cython => {
                 self.write_with_backend(file, &mut CythonLanguageBackend::new(&self.config))
+            }
+            Language::Nim => {
+                self.write_with_backend(file, &mut NimLanguageBackend::new(&self.config))
             }
         }
     }

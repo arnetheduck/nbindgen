@@ -1,3 +1,6 @@
+use std::ffi::c_void;
+
+
 type A = fn ();
 type B = fn () -> ();
 type C = fn (i32, i32) -> bool;
@@ -21,6 +24,8 @@ pub extern "C" fn O() -> fn ()
 
 type P = fn (named1st: i32, bool, named3rd: bool, _: i32);
 
+type Q = fn (v: *mut c_void);
+
 #[no_mangle]
 pub extern "C" fn root(
     a: A,
@@ -37,5 +42,6 @@ pub extern "C" fn root(
     l: L,
     m: M,
     n: N,
-    p: P
+    p: P,
+    q: Q,
 ) { }

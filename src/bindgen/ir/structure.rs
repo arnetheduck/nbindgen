@@ -364,7 +364,7 @@ impl Item for Struct {
         }
 
         for field in &mut self.fields {
-            reserved::escape(&mut field.name);
+            reserved::escape(config, &mut field.name);
         }
 
         for c in self.associated_constants.iter_mut() {
