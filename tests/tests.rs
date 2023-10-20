@@ -1,6 +1,6 @@
-extern crate cbindgen;
+extern crate nbindgen;
 
-use cbindgen::*;
+use nbindgen::*;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
@@ -9,22 +9,12 @@ use std::process::Command;
 use std::{env, fs, str};
 
 // Set automatically by cargo for integration tests
-static CBINDGEN_PATH: &str = env!("CARGO_BIN_EXE_cbindgen");
+static CBINDGEN_PATH: &str = env!("CARGO_BIN_EXE_nbindgen");
 
-fn style_str(style: Style) -> &'static str {
-    match style {
-        Style::Both => "both",
-        Style::Tag => "tag",
-        Style::Type => "type",
-    }
-}
 
 fn run_cbindgen(
     path: &Path,
     output: Option<&Path>,
-    language: Language,
-    cpp_compat: bool,
-    style: Option<Style>,
     generate_depfile: bool,
 ) -> (Vec<u8>, Option<String>) {
     assert!(
@@ -44,23 +34,23 @@ fn run_cbindgen(
         None
     };
 
-    match language {
-        Language::Cxx => {}
-        Language::C => {
-            command.arg("--lang").arg("c");
+    // match language {
+    //     Language::Cxx => {}
+    //     Language::C => {
+    //         command.arg("--lang").arg("c");
 
-            if cpp_compat {
-                command.arg("--cpp-compat");
-            }
-        }
-        Language::Cython => {
-            command.arg("--lang").arg("cython");
-        }
-    }
+    //         if cpp_compat {
+    //             command.arg("--cpp-compat");
+    //         }
+    //     }
+    //     Language::Cython => {
+    //         command.arg("--lang").arg("cython");
+    //     }
+    // }
 
-    if let Some(style) = style {
-        command.arg("--style").arg(style_str(style));
-    }
+    // if let Some(style) = style {
+    //     command.arg("--style").arg(style_str(style));
+    // }
 
     let config = path.with_extension("toml");
     if config.exists() {
@@ -106,17 +96,11 @@ fn run_cbindgen(
 
 fn compile(
     cbindgen_output: &Path,
-    tests_path: &Path,
+    _tests_path: &Path,
     tmp_dir: &Path,
-    language: Language,
-    style: Option<Style>,
-    skip_warning_as_error: bool,
+    _skip_warning_as_error: bool,
 ) {
-    let cc = match language {
-        Language::Cxx => env::var("CXX").unwrap_or_else(|_| "g++".to_owned()),
-        Language::C => env::var("CC").unwrap_or_else(|_| "gcc".to_owned()),
-        Language::Cython => env::var("CYTHON").unwrap_or_else(|_| "cython".to_owned()),
-    };
+    let cc = "nim";
 
     let file_name = cbindgen_output
         .file_name()
@@ -125,60 +109,7 @@ fn compile(
     object.set_extension("o");
 
     let mut command = Command::new(cc);
-    match language {
-        Language::Cxx | Language::C => {
-            command.arg("-D").arg("DEFINED");
-            command.arg("-I").arg(tests_path);
-            command.arg("-Wall");
-            if !skip_warning_as_error {
-                command.arg("-Werror");
-            }
-            // `swift_name` is not recognzied by gcc.
-            command.arg("-Wno-attributes");
-            // clang warns about unused const variables.
-            command.arg("-Wno-unused-const-variable");
-            // clang also warns about returning non-instantiated templates (they could
-            // be specialized, but they're not so it's fine).
-            command.arg("-Wno-return-type-c-linkage");
-            // deprecated warnings should not be errors as it's intended
-            command.arg("-Wno-deprecated-declarations");
-
-            if let Language::Cxx = language {
-                // enum class is a c++11 extension which makes g++ on macos 10.14 error out
-                // inline variables are are a c++17 extension
-                command.arg("-std=c++17");
-                // Prevents warnings when compiling .c files as c++.
-                command.arg("-x").arg("c++");
-                if let Ok(extra_flags) = env::var("CXXFLAGS") {
-                    command.args(extra_flags.split_whitespace());
-                }
-            } else if let Ok(extra_flags) = env::var("CFLAGS") {
-                command.args(extra_flags.split_whitespace());
-            }
-
-            if let Some(style) = style {
-                command.arg("-D");
-                command.arg(format!(
-                    "CBINDGEN_STYLE_{}",
-                    style_str(style).to_uppercase()
-                ));
-            }
-
-            command.arg("-o").arg(&object);
-            command.arg("-c").arg(cbindgen_output);
-        }
-        Language::Cython => {
-            command.arg("-Wextra");
-            if !skip_warning_as_error {
-                // Our tests contain code that is deprecated in Cython 3.0.
-                // Allowing warnings buys a little time.
-                // command.arg("-Werror");
-            }
-            command.arg("-3");
-            command.arg("-o").arg(&object);
-            command.arg(cbindgen_output);
-        }
-    }
+    command.arg("check").arg(cbindgen_output);
 
     println!("Running: {:?}", command);
     let out = command.output().expect("failed to compile");
@@ -196,9 +127,6 @@ fn run_compile_test(
     name: &'static str,
     path: &Path,
     tmp_dir: &Path,
-    language: Language,
-    cpp_compat: bool,
-    style: Option<Style>,
     cbindgen_outputs: &mut HashSet<Vec<u8>>,
 ) {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -206,23 +134,8 @@ fn run_compile_test(
     let mut generated_file = tests_path.join("expectations");
     fs::create_dir_all(&generated_file).unwrap();
 
-    let style_ext = style
-        // Cython is sensitive to dots, so we can't include any dots.
-        .map(|style| match style {
-            Style::Both => "_both",
-            Style::Tag => "_tag",
-            Style::Type => "",
-        })
-        .unwrap_or_default();
-    let lang_ext = match language {
-        Language::Cxx => ".cpp",
-        Language::C if cpp_compat => ".compat.c",
-        Language::C => ".c",
-        // cbindgen is supposed to generate declaration files (`.pxd`), but `cython` compiler
-        // is extension-sensitive and won't work on them, so we use implementation files (`.pyx`)
-        // in the test suite.
-        Language::Cython => ".pyx",
-    };
+    let style_ext = "";
+    let lang_ext = ".nim";
 
     let skip_warning_as_error = name.rfind(SKIP_WARNING_AS_ERROR_SUFFIX).is_some();
 
@@ -244,9 +157,6 @@ fn run_compile_test(
     let (cbindgen_output, depfile_contents) = run_cbindgen(
         path,
         output_file,
-        language,
-        cpp_compat,
-        style,
         generate_depfile,
     );
     if generate_depfile {
@@ -291,21 +201,8 @@ fn run_compile_test(
             &generated_file,
             &tests_path,
             tmp_dir,
-            language,
-            style,
             skip_warning_as_error,
         );
-
-        if language == Language::C && cpp_compat {
-            compile(
-                &generated_file,
-                &tests_path,
-                tmp_dir,
-                Language::Cxx,
-                style,
-                skip_warning_as_error,
-            );
-        }
     }
 }
 
@@ -319,43 +216,44 @@ fn test_file(name: &'static str, filename: &'static str) {
     // Run tests in deduplication priority order. C++ compatibility tests are run first,
     // otherwise we would lose the C++ compiler run if they were deduplicated.
     let mut cbindgen_outputs = HashSet::new();
-    for cpp_compat in &[true, false] {
-        for style in &[Style::Type, Style::Tag, Style::Both] {
-            run_compile_test(
-                name,
-                test,
-                tmp_dir,
-                Language::C,
-                *cpp_compat,
-                Some(*style),
-                &mut cbindgen_outputs,
-            );
-        }
-    }
+    run_compile_test(name, test, tmp_dir, &mut cbindgen_outputs);
+    // for cpp_compat in &[true, false] {
+    //     for style in &[Style::Type, Style::Tag, Style::Both] {
+    //         run_compile_test(
+    //             name,
+    //             test,
+    //             tmp_dir,
+    //             Language::C,
+    //             *cpp_compat,
+    //             Some(*style),
+    //             &mut cbindgen_outputs,
+    //         );
+    //     }
+    // }
 
-    run_compile_test(
-        name,
-        test,
-        tmp_dir,
-        Language::Cxx,
-        /* cpp_compat = */ false,
-        None,
-        &mut HashSet::new(),
-    );
+    // run_compile_test(
+    //     name,
+    //     test,
+    //     tmp_dir,
+    //     Language::Cxx,
+    //     /* cpp_compat = */ false,
+    //     None,
+    //     &mut HashSet::new(),
+    // );
 
-    // `Style::Both` should be identical to `Style::Tag` for Cython.
-    let mut cbindgen_outputs = HashSet::new();
-    for style in &[Style::Type, Style::Tag] {
-        run_compile_test(
-            name,
-            test,
-            tmp_dir,
-            Language::Cython,
-            /* cpp_compat = */ false,
-            Some(*style),
-            &mut cbindgen_outputs,
-        );
-    }
+    // // `Style::Both` should be identical to `Style::Tag` for Cython.
+    // let mut cbindgen_outputs = HashSet::new();
+    // for style in &[Style::Type, Style::Tag] {
+    //     run_compile_test(
+    //         name,
+    //         test,
+    //         tmp_dir,
+    //         Language::Cython,
+    //         /* cpp_compat = */ false,
+    //         Some(*style),
+    //         &mut cbindgen_outputs,
+    //     );
+    // }
 }
 
 macro_rules! test_file {

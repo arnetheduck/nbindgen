@@ -2,9 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use std::fmt;
+
 use crate::bindgen::config::MangleConfig;
 use crate::bindgen::ir::{ConstExpr, GenericArgument, GenericPath, Path, Type};
 use crate::bindgen::rename::IdentifierType;
+
+use super::writer::Source;
 
 pub fn mangle_path(path: &Path, generic_values: &[GenericArgument], config: &MangleConfig) -> Path {
     Path::new(mangle_name(path.name(), generic_values, config))
@@ -60,12 +64,9 @@ impl<'a> Mangler<'a> {
 
     fn push(&mut self, id: Separator) {
         let count = id as usize;
-        let separator = if self.config.remove_underscores {
-            ""
-        } else {
-            "_"
-        };
-        self.output.extend(std::iter::repeat(separator).take(count));
+        if !self.config.remove_underscores {
+            self.output.push_str(format!("_{}", count).as_str());
+        }
     }
 
     fn append_mangled_argument(&mut self, arg: &GenericArgument, last: bool) {
@@ -187,7 +188,7 @@ fn generics() {
     // Foo<f32> => Foo_f32
     assert_eq!(
         mangle_path(&Path::new("Foo"), &[float()], &MangleConfig::default()),
-        Path::new("Foo_f32")
+        Path::new("Foo_1f32")
     );
 
     // Foo<Bar<f32>> => Foo_Bar_f32
@@ -197,13 +198,13 @@ fn generics() {
             &[generic_path("Bar", &[float()])],
             &MangleConfig::default(),
         ),
-        Path::new("Foo_Bar_f32")
+        Path::new("Foo_1Bar_1f32")
     );
 
     // Foo<Bar> => Foo_Bar
     assert_eq!(
         mangle_path(&Path::new("Foo"), &[path("Bar")], &MangleConfig::default()),
-        Path::new("Foo_Bar")
+        Path::new("Foo_1Bar")
     );
 
     // Foo<Bar> => FooBar
@@ -252,7 +253,7 @@ fn generics() {
             &[generic_path("Bar", &[path("T")])],
             &MangleConfig::default(),
         ),
-        Path::new("Foo_Bar_T")
+        Path::new("Foo_1Bar_1T")
     );
 
     // Foo<Bar<T>, E> => Foo_Bar_T_____E
@@ -262,7 +263,7 @@ fn generics() {
             &[generic_path("Bar", &[path("T")]), path("E")],
             &MangleConfig::default(),
         ),
-        Path::new("Foo_Bar_T_____E")
+        Path::new("Foo_1Bar_1T_3_2E")
     );
 
     // Foo<Bar<T>, Bar<E>> => Foo_Bar_T_____Bar_E
@@ -275,7 +276,7 @@ fn generics() {
             ],
             &MangleConfig::default(),
         ),
-        Path::new("Foo_Bar_T_____Bar_E")
+        Path::new("Foo_1Bar_1T_3_2Bar_1E")
     );
 
     // Foo<Bar<T>, E> => FooBarTE
@@ -313,7 +314,7 @@ fn generics() {
             &[GenericArgument::Const(ConstExpr::Value("40".to_string()))],
             &MangleConfig::default(),
         ),
-        Path::new("Top_40")
+        Path::new("Top_140")
     );
 
     assert_eq!(
@@ -322,7 +323,7 @@ fn generics() {
             &[GenericArgument::Const(ConstExpr::Name("N".to_string()))],
             &MangleConfig::default(),
         ),
-        Path::new("Top_N")
+        Path::new("Top_1N")
     );
 
     assert_eq!(
@@ -331,7 +332,7 @@ fn generics() {
             &[generic_path("N", &[])],
             &MangleConfig::default(),
         ),
-        Path::new("Top_N")
+        Path::new("Top_1N")
     );
 
     assert_eq!(
@@ -343,6 +344,6 @@ fn generics() {
             ],
             &MangleConfig::default(),
         ),
-        Path::new("Foo_f32__40")
+        Path::new("Foo_1f32_240")
     );
 }

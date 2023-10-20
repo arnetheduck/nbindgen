@@ -144,32 +144,11 @@ impl Source for OpaqueItem {
 
         self.documentation.write(config, out);
 
-        self.generic_params.write_with_default(config, out);
+        write!(out, "type {}*", self.export_name());
 
-        match config.language {
-            Language::C if config.style.generate_typedef() => {
-                write!(
-                    out,
-                    "typedef struct {} {};",
-                    self.export_name(),
-                    self.export_name()
-                );
-            }
-            Language::C | Language::Cxx => {
-                write!(out, "struct {};", self.export_name());
-            }
-            Language::Cython => {
-                write!(
-                    out,
-                    "{}struct {}",
-                    config.style.cython_def(),
-                    self.export_name()
-                );
-                out.open_brace();
-                out.write("pass");
-                out.close_brace(false);
-            }
-        }
+        self.generic_params.write(config, out);
+
+        out.write(" {.incompleteStruct.} = object");
 
         condition.write_after(config, out);
     }

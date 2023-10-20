@@ -1,19 +1,20 @@
 [package]
-name = "cbindgen"
-version = "0.26.0"
+name = "nbindgen"
+version = "0.1.0"
 authors = [
+  "Jacek Sieka <arnetheduck@gmail.com>",
   "Emilio Cobos Álvarez <emilio@crisal.io>",
   "Jeff Muizelaar <jmuizelaar@mozilla.com>",
   "Kartikaya Gupta <kats@mozilla.com>",
   "Ryan Hunt <rhunt@eqrion.net>"
 ]
 license = "MPL-2.0"
-description = "A tool for generating C bindings to Rust code."
-keywords = ["bindings", "ffi", "code-generation"]
+description = "A tool for generating Nim bindings to Rust code (based on cbindgen)."
+keywords = ["bindings", "ffi", "code-generation", "nim"]
 categories = ["external-ffi-bindings", "development-tools::ffi"]
-repository = "https://github.com/mozilla/cbindgen"
+repository = "https://github.com/arnetheduck/nbindgen/"
 edition = "2018"
-rust-version = "1.64"
+
 exclude = [
   "tests/profile.rs", # Test relies in a sub-crate, see https://github.com/rust-lang/cargo/issues/9017
 ]
@@ -42,11 +43,11 @@ serial_test = "0.5.0"
 default =  ["clap"]
 
 [[bin]]
-name = "cbindgen"
+name = "nbindgen"
 path = "src/main.rs"
 doc = false
 required-features = ["clap"]
 
 [lib]
-name = "cbindgen"
+name = "nbindgen"
 path = "src/lib.rs"

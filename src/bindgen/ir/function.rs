@@ -77,10 +77,10 @@ impl Function {
         })
     }
 
-    pub fn swift_name(&self, config: &Config) -> Option<String> {
-        if config.language == Language::Cython {
-            return None;
-        }
+    pub fn swift_name(&self, _config: &Config) -> Option<String> {
+        // if config.language == Language::Cython {
+        //     return None;
+        // }
         // If the symbol name starts with the type name, separate the two components with '.'
         // so that Swift recognises the association between the method and the type
         let (ref type_prefix, ref type_name) = match self.self_type_path {
@@ -249,6 +249,8 @@ impl Source for Function {
                     write!(out, "{} ", note);
                 }
             }
+
+            // out.write("proc ");
             cdecl::write_func(out, func, Layout::Horizontal, config);
 
             if !func.extern_decl {
@@ -263,7 +265,26 @@ impl Source for Function {
                 }
             }
 
-            out.write(";");
+            write!(out, " {{.importc: \"{}\".}}", func.path().name());
+            // if let Some(ref prefix) = prefix {
+            //     write!(out, "{} ", prefix);
+            // }
+            // if func.annotations.must_use {
+            //     if let Some(ref anno) = config.function.must_use {
+            //         write!(out, "{} ", anno);
+            //     }
+            // }
+            // out.write("proc ");
+
+            // write_func(out, &func, false);
+            // write!(out, " {{.importc: \"{}\".}}", func.path().name());
+
+            // if !func.extern_decl {
+            //     if let Some(ref postfix) = postfix {
+            //         out.write(" ");
+            //         write!(out, "{}", postfix);
+            //     }
+            // }
 
             condition.write_after(config, out);
         }
@@ -278,11 +299,13 @@ impl Source for Function {
 
             func.documentation.write(config, out);
 
-            if func.extern_decl {
-                out.write("extern ");
-            } else {
-                if let Some(ref prefix) = prefix {
-                    write!(out, "{}", prefix);
+            if let Some(ref prefix) = prefix {
+                write!(out, "{}", prefix);
+                out.new_line();
+            }
+            if func.annotations.must_use {
+                if let Some(ref anno) = config.function.must_use {
+                    write!(out, "{}", anno);
                     out.new_line();
                 }
                 if func.annotations.must_use(config) {
@@ -299,7 +322,10 @@ impl Source for Function {
                     out.new_line();
                 }
             }
+
+            // out.write("proc ");
             cdecl::write_func(out, func, Layout::Vertical, config);
+
             if !func.extern_decl {
                 if let Some(ref postfix) = postfix {
                     out.new_line();
@@ -313,7 +339,7 @@ impl Source for Function {
                 }
             }
 
-            out.write(";");
+            write!(out, " {{.importc: \"{}\".}}", func.path().name());
 
             condition.write_after(config, out);
         }

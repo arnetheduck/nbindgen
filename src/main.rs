@@ -25,43 +25,43 @@ use clap::{Arg, ArgMatches, Command};
 mod bindgen;
 mod logging;
 
-use crate::bindgen::{Bindings, Builder, Cargo, Config, Error, Profile, Style};
+use crate::bindgen::{Bindings, Builder, Cargo, Config, Error, Profile};
 
 fn apply_config_overrides(config: &mut Config, matches: &ArgMatches) {
     // We allow specifying a language to override the config default. This is
     // used by compile-tests.
-    if let Some(lang) = matches.value_of("lang") {
-        config.language = match lang.parse() {
-            Ok(lang) => lang,
-            Err(reason) => {
-                error!("{}", reason);
-                return;
-            }
-        }
-    }
+    // if let Some(lang) = matches.value_of("lang") {
+    //     config.language = match lang.parse() {
+    //         Ok(lang) => lang,
+    //         Err(reason) => {
+    //             error!("{}", reason);
+    //             return;
+    //         }
+    //     }
+    // }
 
-    if matches.is_present("cpp-compat") {
-        config.cpp_compat = true;
-    }
+    // if matches.is_present("cpp-compat") {
+    //     config.cpp_compat = true;
+    // }
 
     if matches.is_present("only-target-dependencies") {
         config.only_target_dependencies = true;
     }
 
-    if let Some(style) = matches.value_of("style") {
-        config.style = match style {
-            "Both" => Style::Both,
-            "both" => Style::Both,
-            "Tag" => Style::Tag,
-            "tag" => Style::Tag,
-            "Type" => Style::Type,
-            "type" => Style::Type,
-            _ => {
-                error!("Unknown style specified.");
-                return;
-            }
-        }
-    }
+    // if let Some(style) = matches.value_of("style") {
+    //     config.style = match style {
+    //         "Both" => Style::Both,
+    //         "both" => Style::Both,
+    //         "Tag" => Style::Tag,
+    //         "tag" => Style::Tag,
+    //         "Type" => Style::Type,
+    //         "type" => Style::Type,
+    //         _ => {
+    //             error!("Unknown style specified.");
+    //             return;
+    //         }
+    //     }
+    // }
 
     if let Some(profile) = matches.value_of("profile") {
         config.parse.expand.profile = match Profile::from_str(profile) {

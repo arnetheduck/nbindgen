@@ -194,13 +194,13 @@ impl PrimitiveType {
         }
     }
 
-    pub fn to_repr_c(&self, config: &Config) -> &'static str {
+    pub fn to_repr_nim(&self, config: &Config) -> &'static str {
         match *self {
             PrimitiveType::Void => "void",
             PrimitiveType::Bool => "bool",
             PrimitiveType::Char => "char",
-            PrimitiveType::SChar => "signed char",
-            PrimitiveType::UChar => "unsigned char",
+            PrimitiveType::SChar => "int8",
+            PrimitiveType::UChar => "char",
             // NOTE: It'd be nice to use a char32_t, but:
             //
             //  * uchar.h is not present on mac (see #423).
@@ -209,7 +209,7 @@ impl PrimitiveType {
             //    the C++ spec only requires it to be the same size as
             //    uint_least32_t, which is _not_ guaranteed to be 4-bytes.
             //
-            PrimitiveType::Char32 => "uint32_t",
+            PrimitiveType::Char32 => "uint32",
             PrimitiveType::Integer {
                 kind,
                 signed,
@@ -217,84 +217,84 @@ impl PrimitiveType {
             } => match kind {
                 IntKind::Short => {
                     if signed {
-                        "short"
+                        "cshort"
                     } else {
-                        "unsigned short"
+                        "cushort"
                     }
                 }
                 IntKind::Int => {
                     if signed {
-                        "int"
+                        "cint"
                     } else {
-                        "unsigned int"
+                        "cuint"
                     }
                 }
                 IntKind::Long => {
                     if signed {
-                        "long"
+                        "clong"
                     } else {
-                        "unsigned long"
+                        "culong"
                     }
                 }
                 IntKind::LongLong => {
                     if signed {
-                        "long long"
+                        "clonglong"
                     } else {
-                        "unsigned long long"
+                        "culonglong"
                     }
                 }
                 IntKind::SizeT => {
                     if signed {
-                        "ssize_t"
+                        "int"
                     } else {
-                        "size_t"
+                        "csize_t"
                     }
                 }
                 IntKind::Size => {
                     if config.usize_is_size_t {
                         if signed {
-                            "ptrdiff_t"
+                            "int"
                         } else {
-                            "size_t"
+                            "uint"
                         }
                     } else if signed {
-                        "intptr_t"
+                        "int"
                     } else {
-                        "uintptr_t"
+                        "uint"
                     }
                 }
                 IntKind::B8 => {
                     if signed {
-                        "int8_t"
+                        "int8"
                     } else {
-                        "uint8_t"
+                        "uint8"
                     }
                 }
                 IntKind::B16 => {
                     if signed {
-                        "int16_t"
+                        "int16"
                     } else {
-                        "uint16_t"
+                        "uint16"
                     }
                 }
                 IntKind::B32 => {
                     if signed {
-                        "int32_t"
+                        "int32"
                     } else {
-                        "uint32_t"
+                        "uint32"
                     }
                 }
                 IntKind::B64 => {
                     if signed {
-                        "int64_t"
+                        "int64"
                     } else {
-                        "uint64_t"
+                        "uint64"
                     }
                 }
             },
-            PrimitiveType::Float => "float",
-            PrimitiveType::Double => "double",
-            PrimitiveType::PtrDiffT => "ptrdiff_t",
+            PrimitiveType::Float => "float32",
+            PrimitiveType::Double => "float64",
+            PrimitiveType::PtrDiffT => "int",
             PrimitiveType::VaList => "va_list",
         }
     }
@@ -508,9 +508,9 @@ impl Type {
                                     if ident == "_" {
                                         wildcard_counter += 1;
                                         if wildcard_counter == 1 {
-                                            "_".to_owned()
+                                            "wild".to_owned()
                                         } else {
-                                            format!("_{}", wildcard_counter - 1)
+                                            format!("wild{}", wildcard_counter - 1)
                                         }
                                     } else {
                                         ident.unraw().to_string()
@@ -676,14 +676,14 @@ impl Type {
                 is_nullable: false,
                 is_ref: false,
             }),
-            "Box" if config.language != Language::Cxx => Some(Type::Ptr {
+            "Box" => Some(Type::Ptr {
                 ty: Box::new(generic.into_owned()),
                 is_const: false,
                 is_nullable: false,
                 is_ref: false,
             }),
             "Cell" => Some(generic.into_owned()),
-            "ManuallyDrop" | "MaybeUninit" | "Pin" if config.language != Language::Cxx => {
+            "ManuallyDrop" | "MaybeUninit" | "Pin" => {
                 Some(generic.into_owned())
             }
             _ => None,

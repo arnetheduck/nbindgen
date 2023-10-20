@@ -30,7 +30,7 @@ pub const CAST: u8 = 'A' as u8;
 pub const DOUBLE_CAST: u32 = 1 as f32 as u32;
 
 #[repr(C)]
-struct Foo {
+struct TFoo {
     x: [i32; FOO],
 }
 

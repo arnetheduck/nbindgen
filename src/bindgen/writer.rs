@@ -130,12 +130,6 @@ impl<'a, F: Write> SourceWriter<'a, F> {
         }
     }
 
-    pub fn push_tab(&mut self) {
-        let spaces = self.spaces() - (self.spaces() % self.bindings.config.tab_width)
-            + self.bindings.config.tab_width;
-        self.spaces.push(spaces);
-    }
-
     pub fn pop_tab(&mut self) {
         assert!(!self.spaces.is_empty());
         self.spaces.pop();
@@ -157,41 +151,11 @@ impl<'a, F: Write> SourceWriter<'a, F> {
     }
 
     pub fn open_brace(&mut self) {
-        match self.bindings.config.language {
-            Language::Cxx | Language::C => match self.bindings.config.braces {
-                Braces::SameLine => {
-                    self.write(" {");
-                    self.push_tab();
-                    self.new_line();
-                }
-                Braces::NextLine => {
-                    self.new_line();
-                    self.write("{");
-                    self.push_tab();
-                    self.new_line();
-                }
-            },
-            Language::Cython => {
-                self.write(":");
-                self.new_line();
-                self.push_tab();
-            }
-        }
+        self.push_set_spaces(self.spaces() + 2);
     }
 
-    pub fn close_brace(&mut self, semicolon: bool) {
-        self.pop_tab();
-        match self.bindings.config.language {
-            Language::Cxx | Language::C => {
-                self.new_line();
-                if semicolon {
-                    self.write("};");
-                } else {
-                    self.write("}");
-                }
-            }
-            Language::Cython => {}
-        }
+    pub fn close_brace(&mut self, _: bool) {
+        self.push_set_spaces(self.spaces() - 2);
     }
 
     pub fn write(&mut self, text: &'static str) {

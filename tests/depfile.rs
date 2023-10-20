@@ -2,7 +2,7 @@ use std::fs::read_to_string;
 use std::path::PathBuf;
 use std::process::Command;
 
-static CBINDGEN_PATH: &str = env!("CARGO_BIN_EXE_cbindgen");
+static CBINDGEN_PATH: &str = env!("CARGO_BIN_EXE_nbindgen");
 
 fn test_project(project_path: &str) {
     let mut cmake_cmd = Command::new("cmake");
@@ -44,6 +44,7 @@ fn test_project(project_path: &str) {
     let mut cmake_build = Command::new("cmake");
     cmake_build.arg("--build").arg(&build_dir);
     let output = cmake_build.output().expect("Failed to execute process");
+    print!("{:?}", std::str::from_utf8(&output.stderr));
     assert!(output.status.success(), "Building test project failed");
     let out_str = String::from_utf8(output.stdout).unwrap();
     assert!(

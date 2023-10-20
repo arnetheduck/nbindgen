@@ -208,58 +208,6 @@ impl FromStr for DocumentationLength {
 
 deserialize_enum_str!(DocumentationLength);
 
-/// A style of Style to use when generating structs and enums.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
-pub enum Style {
-    #[default]
-    Both,
-    Tag,
-    Type,
-}
-
-impl Style {
-    pub fn generate_tag(self) -> bool {
-        match self {
-            Style::Both | Style::Tag => true,
-            Style::Type => false,
-        }
-    }
-
-    pub fn generate_typedef(self) -> bool {
-        match self {
-            Style::Both | Style::Type => true,
-            Style::Tag => false,
-        }
-    }
-
-    // https://cython.readthedocs.io/en/latest/src/userguide/external_C_code.html#styles-of-struct-union-and-enum-declaration
-    pub fn cython_def(self) -> &'static str {
-        if self.generate_tag() {
-            "cdef "
-        } else {
-            "ctypedef "
-        }
-    }
-}
-
-impl FromStr for Style {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Style, Self::Err> {
-        match s {
-            "Both" => Ok(Style::Both),
-            "both" => Ok(Style::Both),
-            "Tag" => Ok(Style::Tag),
-            "tag" => Ok(Style::Tag),
-            "Type" => Ok(Style::Type),
-            "type" => Ok(Style::Type),
-            _ => Err(format!("Unrecognized Style: '{}'.", s)),
-        }
-    }
-}
-
-deserialize_enum_str!(Style);
-
 /// Different item types that we can generate and filter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ItemType {
@@ -898,16 +846,10 @@ pub struct Config {
     pub header: Option<String>,
     /// A list of additional includes to put at the beginning of the generated header
     pub includes: Vec<String>,
-    /// A list of additional system includes to put at the beginning of the generated header
-    pub sys_includes: Vec<String>,
-    /// Optional verbatim code added after the include blocks
-    pub after_includes: Option<String>,
+    /// A list of imports to put at the beginning of the generated header
+    pub imports: Vec<String>,
     /// Optional text to output at the end of the file
     pub trailer: Option<String>,
-    /// Optional name to use for an include guard
-    pub include_guard: Option<String>,
-    /// Add a `#pragma once` guard
-    pub pragma_once: bool,
     /// Generates no includes at all. Overrides all other include options
     ///
     /// This option is useful when using cbindgen with tools such as python's cffi which
@@ -917,26 +859,12 @@ pub struct Config {
     pub autogen_warning: Option<String>,
     /// Include a comment with the version of cbindgen used to generate the file
     pub include_version: bool,
-    /// An optional name for the root namespace. Only applicable when language="C++"
-    pub namespace: Option<String>,
-    /// An optional list of namespaces. Only applicable when language="C++"
-    pub namespaces: Option<Vec<String>>,
-    /// An optional list of namespaces to declare as using. Only applicable when language="C++"
-    pub using_namespaces: Option<Vec<String>>,
-    /// The style to use for braces
-    pub braces: Braces,
     /// The preferred length of a line, used for auto breaking function arguments
     pub line_length: usize,
     /// The amount of spaces in a tab
     pub tab_width: usize,
     /// The type of line endings to generate
     pub line_endings: LineEndingStyle,
-    /// The language to output bindings for
-    pub language: Language,
-    /// Include preprocessor defines in C bindings to ensure C++ compatibility
-    pub cpp_compat: bool,
-    /// The style to declare structs, enums and unions in for C
-    pub style: Style,
     /// Default sort key for functions and constants.
     pub sort_by: SortKey,
     /// If this option is true `usize` and `isize` will be converted into `size_t` and `ptrdiff_t`
@@ -1019,24 +947,14 @@ impl Default for Config {
         Config {
             header: None,
             includes: Vec::new(),
-            sys_includes: Vec::new(),
-            after_includes: None,
+            imports: Vec::new(),
             trailer: None,
-            include_guard: None,
-            pragma_once: false,
             autogen_warning: None,
             include_version: false,
             no_includes: false,
-            namespace: None,
-            namespaces: None,
-            using_namespaces: None,
-            braces: Braces::SameLine,
             line_length: 100,
             tab_width: 2,
             line_endings: LineEndingStyle::default(),
-            language: Language::Cxx,
-            cpp_compat: false,
-            style: Style::default(),
             usize_is_size_t: false,
             sort_by: SortKey::None,
             macro_expansion: Default::default(),
@@ -1060,34 +978,6 @@ impl Default for Config {
 }
 
 impl Config {
-    pub(crate) fn cpp_compatible_c(&self) -> bool {
-        self.language == Language::C && self.cpp_compat
-    }
-
-    pub(crate) fn include_guard(&self) -> Option<&str> {
-        if self.language == Language::Cython {
-            None
-        } else {
-            self.include_guard.as_deref()
-        }
-    }
-
-    pub(crate) fn includes(&self) -> &[String] {
-        if self.language == Language::Cython {
-            &[]
-        } else {
-            &self.includes
-        }
-    }
-
-    pub(crate) fn sys_includes(&self) -> &[String] {
-        if self.language == Language::Cython {
-            &[]
-        } else {
-            &self.sys_includes
-        }
-    }
-
     pub fn from_file<P: AsRef<StdPath>>(file_name: P) -> Result<Config, String> {
         let config_text = fs::read_to_string(file_name.as_ref()).map_err(|_| {
             format!(

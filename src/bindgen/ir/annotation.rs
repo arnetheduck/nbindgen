@@ -58,8 +58,8 @@ impl AnnotationSet {
         self.annotations.is_empty() && !self.must_use
     }
 
-    pub(crate) fn must_use(&self, config: &Config) -> bool {
-        self.must_use && config.language != Language::Cython
+    pub(crate) fn must_use(&self, _config: &Config) -> bool {
+        self.must_use
     }
 
     pub(crate) fn deprecated_note<'c>(
@@ -68,10 +68,6 @@ impl AnnotationSet {
         kind: DeprecatedNoteKind,
     ) -> Option<Cow<'c, str>> {
         let note = self.deprecated.as_deref()?;
-
-        if config.language == Language::Cython {
-            return None;
-        }
 
         if note.is_empty() {
             return Some(Cow::Borrowed(match kind {

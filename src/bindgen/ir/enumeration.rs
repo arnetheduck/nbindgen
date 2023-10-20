@@ -6,7 +6,7 @@ use std::io::Write;
 
 use syn::ext::IdentExt;
 
-use crate::bindgen::config::{Config, Language};
+use crate::bindgen::config::Config;
 use crate::bindgen::declarationtyperesolver::DeclarationTypeResolver;
 use crate::bindgen::dependencies::Dependencies;
 use crate::bindgen::ir::{
@@ -116,12 +116,12 @@ impl EnumVariant {
         ) -> Result<Vec<Field>, String> {
             let mut res = Vec::new();
 
-            if inline_tag_field {
-                res.push(Field::from_name_and_type(
-                    inline_name.map_or_else(|| "tag".to_string(), |name| format!("{}_tag", name)),
-                    Type::Path(GenericPath::new(Path::new("Tag"), vec![])),
-                ));
-            }
+            // if inline_tag_field {
+            //     res.push(Field::from_name_and_type(
+            //         inline_name.map_or_else(|| "tag".to_string(), |name| format!("{}_tag", name)),
+            //         Type::Path(GenericPath::new(Path::new("Tag"), vec![])),
+            //     ));
+            // }
 
             for (i, field) in fields.iter().enumerate() {
                 if let Some(mut ty) = Type::load(&field.ty)? {
@@ -197,7 +197,7 @@ impl EnumVariant {
                 // Besides that for C++ we generate casts/getters that can be used instead of
                 // direct field accesses and also have a benefit of being checked.
                 // As a result we don't currently inline variant definitions in C++ mode at all.
-                let inline = inline_casts && config.language != Language::Cxx;
+                let inline = inline_casts; // && config.language != Language::Cxx;
                 let inline_name = if inline { Some(&*name) } else { None };
                 VariantBody::Body {
                     body: Struct::new(
@@ -296,22 +296,17 @@ impl Source for EnumVariant {
     fn write<F: Write>(&self, config: &Config, out: &mut SourceWriter<F>) {
         let condition = self.cfg.to_condition(config);
         // Cython doesn't support conditional enum variants.
-        if config.language != Language::Cython {
+        if true { // config.language != Language::Cython {
             condition.write_before(config, out);
         }
         self.documentation.write(config, out);
         write!(out, "{}", self.export_name);
-        if let Some(discriminant) = &self.discriminant {
-            if config.language == Language::Cython {
-                // For extern Cython declarations the enumerator value is ignored,
-                // but still useful as documentation, so we write it as a comment.
-                out.write(" #")
-            }
-            out.write(" = ");
-            discriminant.write(config, out);
-        }
-        out.write(",");
-        if config.language != Language::Cython {
+        // if let Some(discriminant) = self.discriminant {
+        //     out.write(" = ");
+        //     discriminant.write(config, out);
+        // }
+        // out.write(",");
+        if true { // config.language != Language::Cython {
             condition.write_after(config, out);
         }
     }
@@ -519,7 +514,7 @@ impl Item for Enum {
     fn rename_for_config(&mut self, config: &Config) {
         config.export.rename(&mut self.export_name);
 
-        if config.language != Language::Cxx && self.tag.is_some() {
+        if self.tag.is_some() {
             // it makes sense to always prefix Tag with type name in C
             let new_tag = format!("{}_Tag", self.export_name);
             if self.repr.style == ReprStyle::Rust {
@@ -656,7 +651,7 @@ impl Item for Enum {
 
 impl Source for Enum {
     fn write<F: Write>(&self, config: &Config, out: &mut SourceWriter<F>) {
-        let size = self.repr.ty.map(|ty| ty.to_primitive().to_repr_c(config));
+        let size = self.repr.ty.map(|ty| ty.to_primitive().to_repr_nim(config));
         let has_data = self.tag.is_some();
         let inline_tag_field = Self::inline_tag_field(&self.repr);
         let tag_name = self.tag_name();
@@ -670,9 +665,9 @@ impl Source for Enum {
         // If the enum has data, we need to emit a struct or union for the data
         // and enum for the tag. C++ supports nested type definitions, so we open
         // the struct or union here and define the tag enum inside it (*).
-        if has_data && config.language == Language::Cxx {
-            self.open_struct_or_union(config, out, inline_tag_field);
-        }
+        // if has_data && config.language == Language::Cxx {
+        //     self.open_struct_or_union(config, out, inline_tag_field);
+        // }
 
         // Emit the tag enum and everything related to it.
         self.write_tag_enum(config, out, size, has_data, tag_name);
@@ -686,7 +681,7 @@ impl Source for Enum {
             // Open the struct or union for the data (**), gathering all the variants with data
             // together, unless it's C++, then we have already opened that struct/union at (*) and
             // are currently inside it.
-            if config.language != Language::Cxx {
+            if true { // config.language != Language::Cxx {
                 self.open_struct_or_union(config, out, inline_tag_field);
             }
 
@@ -699,19 +694,19 @@ impl Source for Enum {
             // corresponding C code. So we can inline the unnamed union into the struct and get the
             // same observable result. Moreother we have to do it because Cython doesn't support
             // unnamed unions.
-            if !inline_tag_field && config.language != Language::Cython {
-                out.write("union");
-                out.open_brace();
-            }
+            // if !inline_tag_field { // && config.language != Language::Cython {
+            //     out.write("union");
+            //     out.open_brace();
+            // }
 
             // Emit fields for all variants with data.
             self.write_variant_fields(config, out, inline_tag_field);
 
             // Close union of all variants with data, only in the non-inline tag scenario.
             // See the comment about Cython on `open_brace`.
-            if !inline_tag_field && config.language != Language::Cython {
-                out.close_brace(true);
-            }
+            // if !inline_tag_field { // && config.language != Language::Cython {
+            //     out.close_brace(true);
+            // }
 
             // Emit convenience methods for the struct or enum for the data.
             self.write_derived_functions_data(config, out, tag_name);
@@ -723,12 +718,30 @@ impl Source for Enum {
             }
 
             // Close the struct or union opened either at (*) or at (**).
-            if config.language == Language::C && config.style.generate_typedef() {
-                out.close_brace(false);
-                write!(out, " {};", self.export_name);
-            } else {
+            // if config.language == Language::C && config.style.generate_typedef() {
+            //     out.close_brace(false);
+            //     write!(out, " {};", self.export_name);
+            // } else {
                 out.close_brace(true);
-            }
+            // }
+
+            // write!(out, "tag*: {}", enum_name);
+
+            // out.new_line();
+
+            // for (i, &(ref field_name, ref body)) in self
+            //     .variants
+            //     .iter()
+            //     .filter_map(|variant| variant.body.as_ref())
+            //     .enumerate()
+            // {
+            //     if i != 0 {
+            //         out.new_line();
+            //     }
+            //     write!(out, "{}*: {}", field_name, body.export_name());
+            // }
+
+            // out.dedent();
         }
 
         condition.write_after(config, out);
@@ -748,80 +761,44 @@ impl Enum {
         tag_name: &str,
     ) {
         // Open the tag enum.
-        match config.language {
-            Language::C => {
-                if let Some(prim) = size {
-                    // If we need to specify size, then we have no choice but to create a typedef,
-                    // so `config.style` is not respected.
-                    write!(out, "enum");
-                    if let Some(note) = self
-                        .annotations
-                        .deprecated_note(config, DeprecatedNoteKind::Enum)
-                    {
-                        write!(out, " {}", note);
-                    }
-                    write!(out, " {}", tag_name);
+        if let Some(prim) = size {
+            // If we need to specify size, then we have no choice but to create a typedef,
+            // so `config.style` is not respected.
+            // write!(out, "type ");
+            // if let Some(note) = self
+            //     .annotations
+            //     .deprecated_note(config, DeprecatedNoteKind::Enum)
+            // {
+            //     write!(out, " {}", note);
+            // }
+            write!(out, "type {}* {{.size: sizeof({}).}} = enum", tag_name, prim);
 
-                    if config.cpp_compatible_c() {
-                        out.new_line();
-                        out.write("#ifdef __cplusplus");
-                        out.new_line();
-                        write!(out, "  : {}", prim);
-                        out.new_line();
-                        out.write("#endif // __cplusplus");
-                        out.new_line();
-                    }
-                } else {
-                    if config.style.generate_typedef() {
-                        out.write("typedef ");
-                    }
-                    out.write("enum");
-                    if let Some(note) = self
-                        .annotations
-                        .deprecated_note(config, DeprecatedNoteKind::Enum)
-                    {
-                        write!(out, " {}", note);
-                    }
-                    if config.style.generate_tag() {
-                        write!(out, " {}", tag_name);
-                    }
-                }
-            }
-            Language::Cxx => {
-                if config.enumeration.enum_class(&self.annotations) {
-                    out.write("enum class");
-                } else {
-                    out.write("enum");
-                }
-
-                if self.annotations.must_use(config) {
-                    if let Some(ref anno) = config.enumeration.must_use {
-                        write!(out, " {}", anno)
-                    }
-                }
-
-                if let Some(note) = self
-                    .annotations
-                    .deprecated_note(config, DeprecatedNoteKind::Enum)
-                {
-                    write!(out, " {}", note);
-                }
-
-                write!(out, " {}", tag_name);
-                if let Some(prim) = size {
-                    write!(out, " : {}", prim);
-                }
-            }
-            Language::Cython => {
-                if size.is_some() {
-                    // If we need to specify size, then we have no choice but to create a typedef,
-                    // so `config.style` is not respected.
-                    write!(out, "cdef enum");
-                } else {
-                    write!(out, "{}enum {}", config.style.cython_def(), tag_name);
-                }
-            }
+            // if config.cpp_compatible_c() {
+            //     out.new_line();
+            //     out.write("#ifdef __cplusplus");
+            //     out.new_line();
+            //     write!(out, "  : {}", prim);
+            //     out.new_line();
+            //     out.write("#endif // __cplusplus");
+            //     out.new_line();
+            // }
+        } else {
+            // if config.style.generate_typedef() {
+            //     out.write("typedef ");
+            // }
+            // out.write("enum");
+            // if let Some(note) = self
+            //     .annotations
+            //     .deprecated_note(config, DeprecatedNoteKind::Enum)
+            // {
+            write!(out, "type {}* = enum", tag_name);
+                //     write!(out, " {}", note);
+            // }
+            // if config.style.generate_tag() {
+            //     write!(out, " {}", tag_name);
+            // }
         }
+        out.new_line();
         out.open_brace();
 
         // Emit enumerators for the tag enum.
@@ -833,32 +810,22 @@ impl Enum {
         }
 
         // Close the tag enum.
-        if config.language == Language::C && size.is_none() && config.style.generate_typedef() {
-            out.close_brace(false);
-            write!(out, " {};", tag_name);
-        } else {
+        // if config.language == Language::C && size.is_none() && config.style.generate_typedef() {
+        //     out.close_brace(false);
+        //     write!(out, " {};", tag_name);
+        // } else {
             out.close_brace(true);
-        }
+        // }
 
         // Emit typedef specifying the tag enum's size if necessary.
         // In C++ enums can "inherit" from numeric types (`enum E: uint8_t { ... }`),
         // but in C `typedef uint8_t E` is the only way to give a fixed size to `E`.
-        if let Some(prim) = size {
-            if config.cpp_compatible_c() {
-                out.new_line_if_not_start();
-                out.write("#ifndef __cplusplus");
-            }
-
-            if config.language != Language::Cxx {
-                out.new_line();
-                write!(out, "{} {} {};", config.language.typedef(), prim, tag_name);
-            }
-
-            if config.cpp_compatible_c() {
-                out.new_line_if_not_start();
-                out.write("#endif // __cplusplus");
-            }
-        }
+        // if let Some(prim) = size {
+        //     if config.language != Language::Cxx {
+        //         out.new_line();
+        //         write!(out, "type {} = {}", tag_name, prim);
+        //     }
+        // }
 
         // Emit convenience methods for the tag enum.
         self.write_derived_functions_enum(config, out, has_data, tag_name);
@@ -869,33 +836,34 @@ impl Enum {
         &self,
         config: &Config,
         out: &mut SourceWriter<F>,
-        inline_tag_field: bool,
+        _inline_tag_field: bool,
     ) {
-        match config.language {
-            Language::C if config.style.generate_typedef() => out.write("typedef "),
-            Language::C | Language::Cxx => {}
-            Language::Cython => out.write(config.style.cython_def()),
-        }
+        // match config.language {
+        //     Language::C if config.style.generate_typedef() => out.write("typedef "),
+        //     Language::C | Language::Cxx => {}
+        //     Language::Cython => out.write(config.style.cython_def()),
+        // }
 
-        out.write(if inline_tag_field { "union" } else { "struct" });
+        // out.write(if inline_tag_field { "union" } else { "struct" });
 
-        if self.annotations.must_use(config) {
-            if let Some(ref anno) = config.structure.must_use {
-                write!(out, " {}", anno);
-            }
-        }
+        // if self.annotations.must_use(config) {
+        //     if let Some(ref anno) = config.structure.must_use {
+        //         write!(out, " {}", anno);
+        //     }
+        // }
 
-        if let Some(note) = self
-            .annotations
-            .deprecated_note(config, DeprecatedNoteKind::Struct)
-        {
-            write!(out, " {} ", note);
-        }
+        // if let Some(note) = self
+        //     .annotations
+        //     .deprecated_note(config, DeprecatedNoteKind::Struct)
+        // {
+        //     write!(out, " {} ", note);
+        // }
 
-        if config.language != Language::C || config.style.generate_tag() {
-            write!(out, " {}", self.export_name());
-        }
-
+        // if config.language != Language::C || config.style.generate_tag() {
+        //     write!(out, " {}", self.export_name());
+        // }
+        write!(out, "type {}* = object", self.export_name());
+        out.new_line();
         out.open_brace();
 
         // Emit the pre_body section, if relevant.
@@ -918,13 +886,13 @@ impl Enum {
                 out.new_line();
                 let condition = variant.cfg.to_condition(config);
                 // Cython doesn't support conditional enum variants.
-                if config.language != Language::Cython {
+                // if config.language != Language::Cython {
                     condition.write_before(config, out);
-                }
+                // }
                 body.write(config, out);
-                if config.language != Language::Cython {
+                // if config.language != Language::Cython {
                     condition.write_after(config, out);
-                }
+                // }
             }
         }
     }
@@ -935,26 +903,27 @@ impl Enum {
     /// to refer to the same tag that exist in all the variants.
     fn write_tag_field<F: Write>(
         &self,
-        config: &Config,
+        _config: &Config,
         out: &mut SourceWriter<F>,
-        size: Option<&str>,
+        _size: Option<&str>,
         inline_tag_field: bool,
         tag_name: &str,
     ) {
         // C++ allows accessing only common initial sequence of union
         // fields so we have to wrap the tag field into an anonymous struct.
-        let wrap_tag = inline_tag_field && config.language == Language::Cxx;
+        let wrap_tag = inline_tag_field && false; // config.language == Language::Cxx;
 
         if wrap_tag {
             out.write("struct");
             out.open_brace();
         }
 
-        if config.language == Language::C && size.is_none() && !config.style.generate_typedef() {
-            out.write("enum ");
-        }
+        // if config.language == Language::C && size.is_none() && false { // !config.style.generate_typedef() {
+        //     out.write("enum ");
+        // }
 
-        write!(out, "{} tag;", tag_name);
+        write!(out, "case tag*: {}", tag_name);
+        out.new_line();
 
         if wrap_tag {
             out.close_brace(true);
@@ -969,6 +938,7 @@ impl Enum {
         inline_tag_field: bool,
     ) {
         let mut first = true;
+        let mut has_else = false;
         for variant in &self.variants {
             if let VariantBody::Body {
                 name, body, inline, ..
@@ -980,9 +950,14 @@ impl Enum {
                 first = false;
                 let condition = variant.cfg.to_condition(config);
                 // Cython doesn't support conditional enum variants.
-                if config.language != Language::Cython {
+                //if config.language != Language::Cython {
                     condition.write_before(config, out);
-                }
+                //}
+                out.write("of ");
+                variant.write(config, out);
+                out.write(":");
+                out.new_line();
+                out.open_brace();
                 if *inline {
                     // Write definition of an inlined variant with data.
                     // Cython extern declarations don't manage layouts, layouts are defined entierly
@@ -991,26 +966,37 @@ impl Enum {
                     // support unnamed structs.
                     // For the same reason with Cython we can omit per-variant tags (the first
                     // field) to avoid extra noise, the main `tag` is enough in this case.
-                    if config.language != Language::Cython {
-                        out.write("struct");
-                        out.open_brace();
-                    }
+                    // if config.language != Language::Cython {
+                    //     out.write("struct");
+                    //     out.open_brace();
+                    // }
                     let start_field =
-                        usize::from(inline_tag_field && config.language == Language::Cython);
-                    out.write_vertical_source_list(&body.fields[start_field..], ListType::Cap(";"));
-                    if config.language != Language::Cython {
-                        out.close_brace(true);
-                    }
-                } else if config.style.generate_typedef() || config.language == Language::Cython {
-                    write!(out, "{} {};", body.export_name(), name);
+                        usize::from(inline_tag_field && false);
+                    out.write_vertical_source_list(&body.fields[start_field..], ListType::Cap(""));
+                    //if config.language != Language::Cython {
+                    //    out.close_brace(true);
+                    //}
+                // } else if config.style.generate_typedef() || false {
+                //     write!(out, "{} {};", body.export_name(), name);
                 } else {
-                    write!(out, "struct {} {};", body.export_name(), name);
+                    write!(out, "{}*: {}", name, body.export_name());
                 }
-                if config.language != Language::Cython {
+                out.close_brace(false);
+
+                //if config.language != Language::Cython {
                     condition.write_after(config, out);
-                }
+                //}
+            } else {
+                has_else = true;
             }
         }
+        if has_else {
+            if !first {
+                out.new_line();
+            }
+            out.write("else: discard")
+        }
+
     }
 
     // Emit convenience methods for enums themselves.
@@ -1021,7 +1007,7 @@ impl Enum {
         has_data: bool,
         tag_name: &str,
     ) {
-        if config.language != Language::Cxx {
+        if true { // config.language != Language::Cxx {
             return;
         }
 
@@ -1165,7 +1151,7 @@ impl Enum {
         out: &mut SourceWriter<F>,
         tag_name: &str,
     ) {
-        if config.language != Language::Cxx {
+        if true { // config.language != Language::Cxx {
             return;
         }
 

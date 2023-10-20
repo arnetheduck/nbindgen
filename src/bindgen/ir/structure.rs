@@ -6,7 +6,7 @@ use std::io::Write;
 
 use syn::ext::IdentExt;
 
-use crate::bindgen::config::{Config, Language, LayoutConfig};
+use crate::bindgen::config::{Config, LayoutConfig};
 use crate::bindgen::declarationtyperesolver::DeclarationTypeResolver;
 use crate::bindgen::dependencies::Dependencies;
 use crate::bindgen::ir::{
@@ -287,9 +287,9 @@ impl Item for Struct {
 
     fn rename_for_config(&mut self, config: &Config) {
         // Rename the name of the struct
-        if !(self.has_tag_field && config.language == Language::Cxx) {
-            config.export.rename(&mut self.export_name);
-        }
+        // if !(self.has_tag_field && config.language == Language::Cxx) {
+        //     config.export.rename(&mut self.export_name);
+        // }
 
         // Rename the types used in fields
         {
@@ -329,9 +329,7 @@ impl Item for Struct {
                 // If we don't have any rules for a tuple struct, prefix them with
                 // an underscore so it still compiles.
                 for name in names {
-                    if name.starts_with(|c: char| c.is_ascii_digit()) {
-                        name.insert(0, '_');
-                    }
+                    name.insert(0, 'x');
                 }
             }
         }
@@ -412,42 +410,42 @@ impl Source for Struct {
         //   typedef struct {
         // C with Both as style:
         //   typedef struct Name {
-        match config.language {
-            Language::C if config.style.generate_typedef() => out.write("typedef "),
-            Language::C | Language::Cxx => {}
-            Language::Cython => out.write(config.style.cython_def()),
-        }
+        // match config.language {
+        //     Language::C if config.style.generate_typedef() => out.write("typedef "),
+        //     Language::C | Language::Cxx => {}
+        //     Language::Cython => out.write(config.style.cython_def()),
+        // }
 
         // Cython extern declarations don't manage layouts, layouts are defined entierly by the
         // corresponding C code. So this `packed` is only for documentation, and missing
         // `aligned(n)` is also not a problem.
-        if config.language == Language::Cython {
-            if let Some(align) = self.alignment {
-                match align {
-                    ReprAlign::Packed => out.write("packed "),
-                    ReprAlign::Align(_) => {} // Not supported
-                }
-            }
-        }
+        // if config.language == Language::Cython {
+        //     if let Some(align) = self.alignment {
+        //         match align {
+        //             ReprAlign::Packed => out.write("packed "),
+        //             ReprAlign::Align(_) => {} // Not supported
+        //         }
+        //     }
+        // }
 
-        out.write("struct");
+        out.write("type");
 
-        if config.language != Language::Cython {
-            if let Some(align) = self.alignment {
-                match align {
-                    ReprAlign::Packed => {
-                        if let Some(ref anno) = config.layout.packed {
-                            write!(out, " {}", anno);
-                        }
-                    }
-                    ReprAlign::Align(n) => {
-                        if let Some(ref anno) = config.layout.aligned_n {
-                            write!(out, " {}({})", anno, n);
-                        }
-                    }
-                }
-            }
-        }
+        // if config.language != Language::Cython {
+        //     if let Some(align) = self.alignment {
+        //         match align {
+        //             ReprAlign::Packed => {
+        //                 if let Some(ref anno) = config.layout.packed {
+        //                     write!(out, " {}", anno);
+        //                 }
+        //             }
+        //             ReprAlign::Align(n) => {
+        //                 if let Some(ref anno) = config.layout.aligned_n {
+        //                     write!(out, " {}({})", anno, n);
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         if self.annotations.must_use(config) {
             if let Some(ref anno) = config.structure.must_use {
@@ -461,10 +459,12 @@ impl Source for Struct {
             write!(out, " {}", note);
         }
 
-        if config.language != Language::C || config.style.generate_tag() {
-            write!(out, " {}", self.export_name());
-        }
+        // if config.language != Language::C || config.style.generate_tag() {
+             write!(out, " {}*", self.export_name());
+        // }
 
+        out.write(" = object");
+        out.new_line();
         out.open_brace();
 
         // Emit the pre_body section, if relevant
@@ -473,216 +473,216 @@ impl Source for Struct {
             out.new_line();
         }
 
-        out.write_vertical_source_list(&self.fields, ListType::Cap(";"));
-        if config.language == Language::Cython && self.fields.is_empty() {
-            out.write("pass");
-        }
+        out.write_vertical_source_list(&self.fields, ListType::Cap(""));
+        // if config.language == Language::Cython && self.fields.is_empty() {
+        //     out.write("pass");
+        // }
 
-        if config.language == Language::Cxx {
-            let mut wrote_start_newline = false;
+        // if config.language == Language::Cxx {
+        //     let mut wrote_start_newline = false;
 
-            if config.structure.derive_constructor(&self.annotations) && !self.fields.is_empty() {
-                if !wrote_start_newline {
-                    wrote_start_newline = true;
-                    out.new_line();
-                }
+        //     if config.structure.derive_constructor(&self.annotations) && !self.fields.is_empty() {
+        //         if !wrote_start_newline {
+        //             wrote_start_newline = true;
+        //             out.new_line();
+        //         }
 
-                out.new_line();
+        //         out.new_line();
 
-                let arg_renamer = |name: &str| {
-                    config
-                        .function
-                        .rename_args
-                        .apply(name, IdentifierType::FunctionArg)
-                        .into_owned()
-                };
-                write!(out, "{}(", self.export_name());
-                let vec: Vec<_> = self
-                    .fields
-                    .iter()
-                    .map(|field| {
-                        Field::from_name_and_type(
-                            // const-ref args to constructor
-                            format!("const& {}", arg_renamer(&field.name)),
-                            field.ty.clone(),
-                        )
-                    })
-                    .collect();
-                out.write_vertical_source_list(&vec[..], ListType::Join(","));
-                write!(out, ")");
-                out.new_line();
-                write!(out, "  : ");
-                let vec: Vec<_> = self
-                    .fields
-                    .iter()
-                    .map(|field| format!("{}({})", field.name, arg_renamer(&field.name)))
-                    .collect();
-                out.write_vertical_source_list(&vec[..], ListType::Join(","));
-                out.new_line();
-                write!(out, "{{}}");
-                out.new_line();
-            }
+        //         let arg_renamer = |name: &str| {
+        //             config
+        //                 .function
+        //                 .rename_args
+        //                 .apply(name, IdentifierType::FunctionArg)
+        //                 .into_owned()
+        //         };
+        //         write!(out, "{}(", self.export_name());
+        //         let vec: Vec<_> = self
+        //             .fields
+        //             .iter()
+        //             .map(|field| {
+        //                 Field::from_name_and_type(
+        //                     // const-ref args to constructor
+        //                     format!("const& {}", arg_renamer(&field.name)),
+        //                     field.ty.clone(),
+        //                 )
+        //             })
+        //             .collect();
+        //         out.write_vertical_source_list(&vec[..], ListType::Join(","));
+        //         write!(out, ")");
+        //         out.new_line();
+        //         write!(out, "  : ");
+        //         let vec: Vec<_> = self
+        //             .fields
+        //             .iter()
+        //             .map(|field| format!("{}({})", field.name, arg_renamer(&field.name)))
+        //             .collect();
+        //         out.write_vertical_source_list(&vec[..], ListType::Join(","));
+        //         out.new_line();
+        //         write!(out, "{{}}");
+        //         out.new_line();
+        //     }
 
-            let other = config
-                .function
-                .rename_args
-                .apply("other", IdentifierType::FunctionArg);
+        //     let other = config
+        //         .function
+        //         .rename_args
+        //         .apply("other", IdentifierType::FunctionArg);
 
-            if self
-                .annotations
-                .bool("internal-derive-bitflags")
-                .unwrap_or(false)
-            {
-                assert_eq!(self.fields.len(), 1);
-                let bits = &self.fields[0].name;
-                if !wrote_start_newline {
-                    wrote_start_newline = true;
-                    out.new_line();
-                }
-                let constexpr_prefix = if config.constant.allow_constexpr {
-                    "constexpr "
-                } else {
-                    ""
-                };
+        //     if self
+        //         .annotations
+        //         .bool("internal-derive-bitflags")
+        //         .unwrap_or(false)
+        //     {
+        //         assert_eq!(self.fields.len(), 1);
+        //         let bits = &self.fields[0].name;
+        //         if !wrote_start_newline {
+        //             wrote_start_newline = true;
+        //             out.new_line();
+        //         }
+        //         let constexpr_prefix = if config.constant.allow_constexpr {
+        //             "constexpr "
+        //         } else {
+        //             ""
+        //         };
 
-                out.new_line();
-                write!(out, "{}explicit operator bool() const", constexpr_prefix);
-                out.open_brace();
-                write!(out, "return !!{bits};");
-                out.close_brace(false);
+        //         out.new_line();
+        //         write!(out, "{}explicit operator bool() const", constexpr_prefix);
+        //         out.open_brace();
+        //         write!(out, "return !!{bits};");
+        //         out.close_brace(false);
 
-                out.new_line();
-                write!(
-                    out,
-                    "{}{} operator~() const",
-                    constexpr_prefix,
-                    self.export_name()
-                );
-                out.open_brace();
-                write!(
-                    out,
-                    "return {} {{ static_cast<decltype({bits})>(~{bits}) }};",
-                    self.export_name()
-                );
-                out.close_brace(false);
-                self.emit_bitflags_binop(constexpr_prefix, '|', &other, out);
-                self.emit_bitflags_binop(constexpr_prefix, '&', &other, out);
-                self.emit_bitflags_binop(constexpr_prefix, '^', &other, out);
-            }
+        //         out.new_line();
+        //         write!(
+        //             out,
+        //             "{}{} operator~() const",
+        //             constexpr_prefix,
+        //             self.export_name()
+        //         );
+        //         out.open_brace();
+        //         write!(
+        //             out,
+        //             "return {} {{ static_cast<decltype({bits})>(~{bits}) }};",
+        //             self.export_name()
+        //         );
+        //         out.close_brace(false);
+        //         self.emit_bitflags_binop(constexpr_prefix, '|', &other, out);
+        //         self.emit_bitflags_binop(constexpr_prefix, '&', &other, out);
+        //         self.emit_bitflags_binop(constexpr_prefix, '^', &other, out);
+        //     }
 
-            // Generate a serializer function that allows dumping this struct
-            // to an std::ostream. It's defined as a friend function inside the
-            // struct definition, and doesn't need the `inline` keyword even
-            // though it's implemented right in the generated header file.
-            if config.structure.derive_ostream(&self.annotations) {
-                if !wrote_start_newline {
-                    wrote_start_newline = true;
-                    out.new_line();
-                }
+        //     // Generate a serializer function that allows dumping this struct
+        //     // to an std::ostream. It's defined as a friend function inside the
+        //     // struct definition, and doesn't need the `inline` keyword even
+        //     // though it's implemented right in the generated header file.
+        //     if config.structure.derive_ostream(&self.annotations) {
+        //         if !wrote_start_newline {
+        //             wrote_start_newline = true;
+        //             out.new_line();
+        //         }
 
-                out.new_line();
-                let stream = config
-                    .function
-                    .rename_args
-                    .apply("stream", IdentifierType::FunctionArg);
-                let instance = config
-                    .function
-                    .rename_args
-                    .apply("instance", IdentifierType::FunctionArg);
-                write!(
-                    out,
-                    "friend std::ostream& operator<<(std::ostream& {}, const {}& {})",
-                    stream,
-                    self.export_name(),
-                    instance,
-                );
-                out.open_brace();
-                write!(out, "return {} << \"{{ \"", stream);
-                let vec: Vec<_> = self
-                    .fields
-                    .iter()
-                    .map(|x| format!(" << \"{}=\" << {}.{}", x.name, instance, x.name))
-                    .collect();
-                out.write_vertical_source_list(&vec[..], ListType::Join(" << \", \""));
-                out.write(" << \" }\";");
-                out.close_brace(false);
-            }
+        //         out.new_line();
+        //         let stream = config
+        //             .function
+        //             .rename_args
+        //             .apply("stream", IdentifierType::FunctionArg);
+        //         let instance = config
+        //             .function
+        //             .rename_args
+        //             .apply("instance", IdentifierType::FunctionArg);
+        //         write!(
+        //             out,
+        //             "friend std::ostream& operator<<(std::ostream& {}, const {}& {})",
+        //             stream,
+        //             self.export_name(),
+        //             instance,
+        //         );
+        //         out.open_brace();
+        //         write!(out, "return {} << \"{{ \"", stream);
+        //         let vec: Vec<_> = self
+        //             .fields
+        //             .iter()
+        //             .map(|x| format!(" << \"{}=\" << {}.{}", x.name, instance, x.name))
+        //             .collect();
+        //         out.write_vertical_source_list(&vec[..], ListType::Join(" << \", \""));
+        //         out.write(" << \" }\";");
+        //         out.close_brace(false);
+        //     }
 
-            let skip_fields = self.has_tag_field as usize;
+        //     let skip_fields = self.has_tag_field as usize;
 
-            macro_rules! emit_op {
-                ($op_name:expr, $op:expr, $conjuc:expr) => {{
-                    if !wrote_start_newline {
-                        #[allow(unused_assignments)]
-                        {
-                            wrote_start_newline = true;
-                        }
-                        out.new_line();
-                    }
+        //     macro_rules! emit_op {
+        //         ($op_name:expr, $op:expr, $conjuc:expr) => {{
+        //             if !wrote_start_newline {
+        //                 #[allow(unused_assignments)]
+        //                 {
+        //                     wrote_start_newline = true;
+        //                 }
+        //                 out.new_line();
+        //             }
 
-                    out.new_line();
+        //             out.new_line();
 
-                    if let Some(Some(attrs)) =
-                        self.annotations.atom(concat!($op_name, "-attributes"))
-                    {
-                        write!(out, "{} ", attrs);
-                    }
+        //             if let Some(Some(attrs)) =
+        //                 self.annotations.atom(concat!($op_name, "-attributes"))
+        //             {
+        //                 write!(out, "{} ", attrs);
+        //             }
 
-                    write!(
-                        out,
-                        "bool operator{}(const {}& {}) const",
-                        $op,
-                        self.export_name(),
-                        other
-                    );
-                    out.open_brace();
-                    out.write("return ");
-                    let vec: Vec<_> = self
-                        .fields
-                        .iter()
-                        .skip(skip_fields)
-                        .map(|field| format!("{} {} {}.{}", field.name, $op, other, field.name))
-                        .collect();
-                    out.write_vertical_source_list(
-                        &vec[..],
-                        ListType::Join(&format!(" {}", $conjuc)),
-                    );
-                    out.write(";");
-                    out.close_brace(false);
-                }};
-            }
+        //             write!(
+        //                 out,
+        //                 "bool operator{}(const {}& {}) const",
+        //                 $op,
+        //                 self.export_name(),
+        //                 other
+        //             );
+        //             out.open_brace();
+        //             out.write("return ");
+        //             let vec: Vec<_> = self
+        //                 .fields
+        //                 .iter()
+        //                 .skip(skip_fields)
+        //                 .map(|field| format!("{} {} {}.{}", field.name, $op, other, field.name))
+        //                 .collect();
+        //             out.write_vertical_source_list(
+        //                 &vec[..],
+        //                 ListType::Join(&format!(" {}", $conjuc)),
+        //             );
+        //             out.write(";");
+        //             out.close_brace(false);
+        //         }};
+        //     }
 
-            if config.structure.derive_eq(&self.annotations) && self.can_derive_eq() {
-                emit_op!("eq", "==", "&&");
-            }
-            if config.structure.derive_neq(&self.annotations) && self.can_derive_eq() {
-                emit_op!("neq", "!=", "||");
-            }
-            if config.structure.derive_lt(&self.annotations)
-                && self.fields.len() == 1
-                && self.fields[0].ty.can_cmp_order()
-            {
-                emit_op!("lt", "<", "&&");
-            }
-            if config.structure.derive_lte(&self.annotations)
-                && self.fields.len() == 1
-                && self.fields[0].ty.can_cmp_order()
-            {
-                emit_op!("lte", "<=", "&&");
-            }
-            if config.structure.derive_gt(&self.annotations)
-                && self.fields.len() == 1
-                && self.fields[0].ty.can_cmp_order()
-            {
-                emit_op!("gt", ">", "&&");
-            }
-            if config.structure.derive_gte(&self.annotations)
-                && self.fields.len() == 1
-                && self.fields[0].ty.can_cmp_order()
-            {
-                emit_op!("gte", ">=", "&&");
-            }
-        }
+        //     if config.structure.derive_eq(&self.annotations) && self.can_derive_eq() {
+        //         emit_op!("eq", "==", "&&");
+        //     }
+        //     if config.structure.derive_neq(&self.annotations) && self.can_derive_eq() {
+        //         emit_op!("neq", "!=", "||");
+        //     }
+        //     if config.structure.derive_lt(&self.annotations)
+        //         && self.fields.len() == 1
+        //         && self.fields[0].ty.can_cmp_order()
+        //     {
+        //         emit_op!("lt", "<", "&&");
+        //     }
+        //     if config.structure.derive_lte(&self.annotations)
+        //         && self.fields.len() == 1
+        //         && self.fields[0].ty.can_cmp_order()
+        //     {
+        //         emit_op!("lte", "<=", "&&");
+        //     }
+        //     if config.structure.derive_gt(&self.annotations)
+        //         && self.fields.len() == 1
+        //         && self.fields[0].ty.can_cmp_order()
+        //     {
+        //         emit_op!("gt", ">", "&&");
+        //     }
+        //     if config.structure.derive_gte(&self.annotations)
+        //         && self.fields.len() == 1
+        //         && self.fields[0].ty.can_cmp_order()
+        //     {
+        //         emit_op!("gte", ">=", "&&");
+        //     }
+        // }
 
         // Emit the post_body section, if relevant
         if let Some(body) = config.export.post_body(&self.path) {
@@ -690,22 +690,7 @@ impl Source for Struct {
             out.write_raw_block(body);
         }
 
-        if config.language == Language::Cxx
-            && config.structure.associated_constants_in_body
-            && config.constant.allow_static_const
-        {
-            for constant in &self.associated_constants {
-                out.new_line();
-                constant.write_declaration(config, out, self);
-            }
-        }
-
-        if config.language == Language::C && config.style.generate_typedef() {
-            out.close_brace(false);
-            write!(out, " {};", self.export_name());
-        } else {
-            out.close_brace(true);
-        }
+        out.close_brace(true);
 
         for constant in &self.associated_constants {
             out.new_line();

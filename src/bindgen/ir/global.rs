@@ -110,12 +110,27 @@ impl Item for Static {
 
 impl Source for Static {
     fn write<F: Write>(&self, config: &Config, out: &mut SourceWriter<F>) {
-        out.write("extern ");
-        if let Type::Ptr { is_const: true, .. } = self.ty {
-        } else if !self.mutable {
-            out.write("const ");
+        // out.write("extern ");
+        // if let Type::Ptr { is_const: true, .. } = self.ty {
+        // } else if !self.mutable {
+        //     out.write("const ");
+        // }
+
+        if !self.mutable {
+            out.write("var "); // TODO: can't do let here but could do let + var
+        } else {
+            out.write("var ")
         }
         cdecl::write_field(out, &self.ty, &self.export_name, config);
-        out.write(";");
+        out.write("");
+
+        // write!(
+        //     out,
+        //     "{}* {{.importc: \"{}\".}}: ",
+        //     self.export_name(),
+        //     self.export_name()
+        // );
+
+        // self.ty.write(config, out);
     }
 }

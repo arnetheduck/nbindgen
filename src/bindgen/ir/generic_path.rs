@@ -100,7 +100,7 @@ impl GenericParams {
         out: &mut SourceWriter<F>,
         with_default: bool,
     ) {
-        if !self.0.is_empty() && config.language == Language::Cxx {
+        if !self.0.is_empty() && false { // config.language == Language::Cxx {
             out.write("template<");
             for (i, item) in self.0.iter().enumerate() {
                 if i != 0 {
@@ -121,8 +121,7 @@ impl GenericParams {
                     }
                 }
             }
-            out.write(">");
-            out.new_line();
+            out.write("]");
         }
     }
 

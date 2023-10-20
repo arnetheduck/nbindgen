@@ -8,7 +8,9 @@ use crate::bindgen::config::Layout;
 use crate::bindgen::declarationtyperesolver::DeclarationType;
 use crate::bindgen::ir::{ConstExpr, Function, GenericArgument, Type};
 use crate::bindgen::writer::{ListType, SourceWriter};
-use crate::bindgen::{Config, Language};
+use crate::bindgen::{Config, Language, reserved};
+
+use super::ir::PrimitiveType;
 
 // This code is for translating Rust types into C declarations.
 // See Section 6.7, Declarations, in the C standard for background.
@@ -25,6 +27,7 @@ enum CDeclarator {
         args: Vec<(Option<String>, CDecl)>,
         layout: Layout,
         never_return: bool,
+        is_return: bool
     },
 }
 
@@ -57,7 +60,7 @@ impl CDecl {
 
     fn from_type(t: &Type, config: &Config) -> CDecl {
         let mut cdecl = CDecl::new();
-        cdecl.build_type(t, false, config);
+        cdecl.build_type(t, false, false, config);
         cdecl
     }
 
@@ -75,7 +78,7 @@ impl CDecl {
             ),
         };
         let ptr_as_array = Type::Array(ty.clone(), ConstExpr::Value(length.to_string()));
-        cdecl.build_type(&ptr_as_array, *is_const, config);
+        cdecl.build_type(&ptr_as_array, *is_const, false, config);
         cdecl
     }
 
@@ -100,22 +103,23 @@ impl CDecl {
             args,
             layout,
             never_return: f.never_return,
+            is_return: true
         });
         self.deprecated = f.annotations.deprecated.clone();
-        self.build_type(&f.ret, false, config);
+        self.build_type(&f.ret, false, true, config);
     }
 
-    fn build_type(&mut self, t: &Type, is_const: bool, config: &Config) {
+    fn build_type(&mut self, t: &Type, is_const: bool, is_return: bool, config: &Config) {
         match t {
             Type::Path(ref generic) => {
-                if is_const {
-                    assert!(
-                        self.type_qualifers.is_empty(),
-                        "error generating cdecl for {:?}",
-                        t
-                    );
-                    self.type_qualifers = "const".to_owned();
-                }
+                // if is_const {
+                //     assert!(
+                //         self.type_qualifers.is_empty(),
+                //         "error generating cdecl for {:?}",
+                //         t
+                //     );
+                //     self.type_qualifers = "const".to_owned();
+                // }
 
                 assert!(
                     self.type_name.is_empty(),
@@ -132,21 +136,21 @@ impl CDecl {
                 self.type_ctype = generic.ctype().cloned();
             }
             Type::Primitive(ref p) => {
-                if is_const {
-                    assert!(
-                        self.type_qualifers.is_empty(),
-                        "error generating cdecl for {:?}",
-                        t
-                    );
-                    self.type_qualifers = "const".to_owned();
-                }
+                // if is_const {
+                //     assert!(
+                //         self.type_qualifers.is_empty(),
+                //         "error generating cdecl for {:?}",
+                //         t
+                //     );
+                //     self.type_qualifers = "const".to_owned();
+                // }
 
                 assert!(
                     self.type_name.is_empty(),
                     "error generating cdecl for {:?}",
                     t
                 );
-                self.type_name = p.to_repr_c(config).to_string();
+                self.type_name = p.to_repr_nim(config).to_string();
             }
             Type::Ptr {
                 ref ty,
@@ -154,17 +158,24 @@ impl CDecl {
                 is_const: ptr_is_const,
                 is_ref,
             } => {
-                self.declarators.push(CDeclarator::Ptr {
-                    is_const,
-                    is_nullable: *is_nullable,
-                    is_ref: *is_ref,
-                });
-                self.build_type(ty, *ptr_is_const, config);
+                match ty.as_ref() {
+                    Type::Primitive(ref _p) => {
+                        self.type_name = "pointer".to_string();
+                    },
+                    _ => {
+                        self.declarators.push(CDeclarator::Ptr {
+                            is_const,
+                            is_nullable: *is_nullable,
+                            is_ref: *is_ref,
+                        });
+                        self.build_type(ty, *ptr_is_const, false, config);
+                    }
+                }
             }
             Type::Array(ref t, ref constant) => {
                 let len = constant.as_str().to_owned();
                 self.declarators.push(CDeclarator::Array(len));
-                self.build_type(t, is_const, config);
+                self.build_type(t, is_const, false, config);
             }
             Type::FuncPtr {
                 ref ret,
@@ -176,34 +187,38 @@ impl CDecl {
                     .iter()
                     .map(|(ref name, ref ty)| (name.clone(), CDecl::from_type(ty, config)))
                     .collect();
-                self.declarators.push(CDeclarator::Ptr {
-                    is_const: false,
-                    is_nullable: true,
-                    is_ref: false,
-                });
+                // self.declarators.push(CDeclarator::Ptr {
+                //     is_const: false,
+                //     is_nullable: true,
+                //     is_ref: false,
+                // });
                 self.declarators.push(CDeclarator::Func {
                     args,
                     layout: config.function.args.clone(),
                     never_return: *never_return,
+                    is_return: is_return,
                 });
-                self.build_type(ret, false, config);
+                self.build_type(ret, false, true, config);
             }
         }
     }
 
-    fn write<F: Write>(&self, out: &mut SourceWriter<F>, ident: Option<&str>, config: &Config) {
+    fn write<F: Write>(&self, out: &mut SourceWriter<F>, ident: Option<&str>, export: bool, is_func: bool, config: &Config) {
+        // Write the identifier
+        if let Some(ident) = ident {
+            if is_func {
+                out.write("proc ");
+            }
+            write!(out, "{}", ident);
+            if export {
+                out.write("*");
+            }
+        }
+
         // Write the type-specifier and type-qualifier first
         if !self.type_qualifers.is_empty() {
             write!(out, "{} ", self.type_qualifers);
         }
-
-        if config.language != Language::Cython {
-            if let Some(ref ctype) = self.type_ctype {
-                write!(out, "{} ", ctype.to_str());
-            }
-        }
-
-        write!(out, "{}", self.type_name);
 
         if !self.type_generic_args.is_empty() {
             out.write("<");
@@ -211,9 +226,117 @@ impl CDecl {
             out.write(">");
         }
 
-        // When we have an identifier, put a space between the type and the declarators
+        let mut close_return =0;
+        {
+            // Write the right part of declarators after the identifier
+            let mut iter = self.declarators.iter();
+            let mut done_proc = is_func;
+
+            #[allow(clippy::while_let_on_iterator)]
+            while let Some(declarator) = iter.next() {
+                match *declarator {
+                    CDeclarator::Ptr { .. } => {
+                    }
+                    CDeclarator::Array(ref _constant) => {
+                    }
+                    CDeclarator::Func {
+                        ref args,
+                        ref layout,
+                        never_return,
+                        is_return,
+                    } => {
+                        // if last_was_pointer {
+                        //     out.write(")");
+                        // }
+
+                        if !done_proc {
+                            if ident.is_some() {
+                                out.write(": ")
+                            }
+
+                            if is_return {
+                                out.write("(");
+                                close_return += 1;
+                            }
+
+                            out.write("proc");
+                        }
+                        done_proc = false;
+                        out.write("(");
+                        // if args.is_empty() { // && config.language == Language::C {
+                        //     out.write("void");
+                        // }
+
+                        fn write_vertical<F: Write>(
+                            out: &mut SourceWriter<F>,
+                            config: &Config,
+                            args: &[(Option<String>, CDecl)],
+                        ) {
+                            let align_length = out.line_length_for_align();
+                            out.push_set_spaces(align_length);
+                            for (i, (arg_ident, arg_ty)) in args.iter().enumerate() {
+                                if i != 0 {
+                                    out.write(",");
+                                    out.new_line();
+                                }
+
+                                // Convert &Option<String> to Option<&str>
+                                let arg_ident = arg_ident.as_ref().map(|x| x.as_ref());
+
+                                arg_ty.write(out, arg_ident, false, false, config);
+                            }
+                            out.pop_tab();
+                        }
+
+                        fn write_horizontal<F: Write>(
+                            out: &mut SourceWriter<F>,
+                            config: &Config,
+                            args: &[(Option<String>, CDecl)],
+                        ) {
+                            for (i, (arg_ident, arg_ty)) in args.iter().enumerate() {
+                                if i != 0 {
+                                    out.write(", ");
+                                }
+
+                                let arg_num = format!("a{}", i);
+                                // Convert &Option<String> to Option<&str>
+                                let arg_ident = arg_ident.as_deref().unwrap_or(&arg_num);
+
+                                arg_ty.write(out, Some(reserved::escaped(arg_ident).as_str()), false, false, config);
+                            }
+                        }
+
+                        match layout {
+                            Layout::Vertical => write_vertical(out, config, args),
+                            Layout::Horizontal => write_horizontal(out, config, args),
+                            Layout::Auto => {
+                                if !out.try_write(
+                                    |out| write_horizontal(out, config, args),
+                                    config.line_length,
+                                ) {
+                                    write_vertical(out, config, args)
+                                }
+                            }
+                        }
+                        out.write(")");
+
+                        if ident.is_none() {
+                            out.write(": ");
+                        }
+
+                        if never_return { // && config.language != Language::Cython {
+                            if let Some(ref no_return_attr) = config.function.no_return {
+                                out.write_fmt(format_args!(" {}", no_return_attr));
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+
         if ident.is_some() {
-            out.write(" ");
+            out.write(": ");
         }
 
         // Write the left part of declarators before the identifier
@@ -229,32 +352,28 @@ impl CDecl {
                     is_nullable,
                     is_ref,
                 } => {
-                    out.write(if is_ref { "&" } else { "*" });
-                    if is_const {
-                        out.write("const ");
-                    }
-                    if !is_nullable && !is_ref && config.language != Language::Cython {
-                        if let Some(attr) = &config.pointer.non_null_attribute {
-                            write!(out, "{} ", attr);
-                        }
-                    }
+                    out.write("ptr ")
+                    // out.write(if is_ref { "&" } else { "*" });
+                    // if is_const {
+                    //     out.write("const ");
+                    // }
+                    // if !is_nullable && !is_ref { // && config.language != Language::Cython {
+                    //     if let Some(attr) = &config.pointer.non_null_attribute {
+                    //         write!(out, "{} ", attr);
+                    //     }
+                    // }
                 }
                 CDeclarator::Array(..) => {
-                    if next_is_pointer {
-                        out.write("(");
-                    }
+                    // if next_is_pointer {
+                    //     out.write("(");
+                    // }
                 }
                 CDeclarator::Func { .. } => {
-                    if next_is_pointer {
-                        out.write("(");
-                    }
+                    // if next_is_pointer {
+                    //     out.write("(");
+                    // }
                 }
             }
-        }
-
-        // Write the identifier
-        if let Some(ident) = ident {
-            write!(out, "{}", ident);
         }
 
         // Write the right part of declarators after the identifier
@@ -265,92 +384,44 @@ impl CDecl {
         while let Some(declarator) = iter.next() {
             match *declarator {
                 CDeclarator::Ptr { .. } => {
-                    last_was_pointer = true;
+                    // last_was_pointer = true;
                 }
                 CDeclarator::Array(ref constant) => {
-                    if last_was_pointer {
-                        out.write(")");
-                    }
-                    write!(out, "[{}]", constant);
+                    // if last_was_pointer {
+                    //     out.write(")");
+                    // }
+                    // write!(out, "[{}]", constant);
 
-                    last_was_pointer = false;
+                    // last_was_pointer = false;
                 }
                 CDeclarator::Func {
                     ref args,
                     ref layout,
                     never_return,
+                    is_return,
                 } => {
-                    if last_was_pointer {
-                        out.write(")");
-                    }
+                    // if last_was_pointer {
+                    //     out.write(")");
+                    // }
 
-                    out.write("(");
-                    if args.is_empty() && config.language == Language::C {
-                        out.write("void");
-                    }
-
-                    fn write_vertical<F: Write>(
-                        out: &mut SourceWriter<F>,
-                        config: &Config,
-                        args: &[(Option<String>, CDecl)],
-                    ) {
-                        let align_length = out.line_length_for_align();
-                        out.push_set_spaces(align_length);
-                        for (i, (arg_ident, arg_ty)) in args.iter().enumerate() {
-                            if i != 0 {
-                                out.write(",");
-                                out.new_line();
-                            }
-
-                            // Convert &Option<String> to Option<&str>
-                            let arg_ident = arg_ident.as_ref().map(|x| x.as_ref());
-
-                            arg_ty.write(out, arg_ident, config);
-                        }
-                        out.pop_tab();
-                    }
-
-                    fn write_horizontal<F: Write>(
-                        out: &mut SourceWriter<F>,
-                        config: &Config,
-                        args: &[(Option<String>, CDecl)],
-                    ) {
-                        for (i, (arg_ident, arg_ty)) in args.iter().enumerate() {
-                            if i != 0 {
-                                out.write(", ");
-                            }
-
-                            // Convert &Option<String> to Option<&str>
-                            let arg_ident = arg_ident.as_ref().map(|x| x.as_ref());
-
-                            arg_ty.write(out, arg_ident, config);
-                        }
-                    }
-
-                    match layout {
-                        Layout::Vertical => write_vertical(out, config, args),
-                        Layout::Horizontal => write_horizontal(out, config, args),
-                        Layout::Auto => {
-                            if !out.try_write(
-                                |out| write_horizontal(out, config, args),
-                                config.line_length,
-                            ) {
-                                write_vertical(out, config, args)
-                            }
-                        }
-                    }
-                    out.write(")");
-
-                    if never_return && config.language != Language::Cython {
+                    if never_return { // && config.language != Language::Cython {
                         if let Some(ref no_return_attr) = config.function.no_return {
                             out.write_fmt(format_args!(" {}", no_return_attr));
                         }
                     }
 
-                    last_was_pointer = true;
+                    // last_was_pointer = true;
                 }
             }
         }
+
+        write!(out, "{}", self.type_name);
+
+        while close_return > 0 {
+            out.write(")");
+            close_return -= 1;
+        }
+
     }
 }
 
@@ -360,13 +431,13 @@ pub fn write_func<F: Write>(
     layout: Layout,
     config: &Config,
 ) {
-    CDecl::from_func(f, layout, config).write(out, Some(f.path().name()), config);
+    CDecl::from_func(f, layout, config).write(out, Some(f.path().name()), true, true, config);
 }
 
 pub fn write_field<F: Write>(out: &mut SourceWriter<F>, t: &Type, ident: &str, config: &Config) {
-    CDecl::from_type(t, config).write(out, Some(ident), config);
+    CDecl::from_type(t, config).write(out, Some(ident), true, false, config);
 }
 
 pub fn write_type<F: Write>(out: &mut SourceWriter<F>, t: &Type, config: &Config) {
-    CDecl::from_type(t, config).write(out, None, config);
+    CDecl::from_type(t, config).write(out, None, true, false, config);
 }

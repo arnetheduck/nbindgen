@@ -1,0 +1,3 @@
+var MUT_GLOBAL_ARRAY*: char
+
+var CONST_GLOBAL_ARRAY*: char

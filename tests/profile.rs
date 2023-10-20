@@ -1,4 +1,4 @@
-use cbindgen::*;
+use nbindgen::*;
 
 use serial_test::serial;
 use std::path::{Path, PathBuf};
@@ -40,7 +40,7 @@ fn build_using_bin(extra_args: &[&str]) -> tempfile::TempDir {
         .tempdir()
         .expect("Creating tmp dir failed");
 
-    let cbindgen_path = env!("CARGO_BIN_EXE_cbindgen");
+    let cbindgen_path = env!("CARGO_BIN_EXE_nbindgen");
 
     Command::new(cbindgen_path)
         .current_dir(expand_dep_test_dir)

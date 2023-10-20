@@ -9,7 +9,7 @@ use std::io::Write;
 use syn::ext::IdentExt;
 use syn::{self, UnOp};
 
-use crate::bindgen::config::{Config, Language};
+use crate::bindgen::config::Config;
 use crate::bindgen::declarationtyperesolver::DeclarationTypeResolver;
 use crate::bindgen::dependencies::Dependencies;
 use crate::bindgen::ir::{
@@ -298,15 +298,15 @@ impl Literal {
                     syn::BinOp::Add(..) => "+",
                     syn::BinOp::Sub(..) => "-",
                     syn::BinOp::Mul(..) => "*",
-                    syn::BinOp::Div(..) => "/",
-                    syn::BinOp::Rem(..) => "%",
-                    syn::BinOp::And(..) => "&&",
-                    syn::BinOp::Or(..) => "||",
-                    syn::BinOp::BitXor(..) => "^",
-                    syn::BinOp::BitAnd(..) => "&",
-                    syn::BinOp::BitOr(..) => "|",
-                    syn::BinOp::Shl(..) => "<<",
-                    syn::BinOp::Shr(..) => ">>",
+                    syn::BinOp::Div(..) => "div",
+                    syn::BinOp::Rem(..) => "mod",
+                    syn::BinOp::And(..) => "and",
+                    syn::BinOp::Or(..) => "or",
+                    syn::BinOp::BitXor(..) => "xor",
+                    syn::BinOp::BitAnd(..) => "and",
+                    syn::BinOp::BitOr(..) => "or",
+                    syn::BinOp::Shl(..) => "shl",
+                    syn::BinOp::Shr(..) => "shr",
                     syn::BinOp::Eq(..) => "==",
                     syn::BinOp::Lt(..) => "<",
                     syn::BinOp::Le(..) => "<=",
@@ -475,11 +475,8 @@ impl Literal {
 
     pub(crate) fn write<F: Write>(&self, config: &Config, out: &mut SourceWriter<F>) {
         match self {
-            Literal::Expr(v) => match (&**v, config.language) {
-                ("true", Language::Cython) => write!(out, "True"),
-                ("false", Language::Cython) => write!(out, "False"),
-                (v, _) => write!(out, "{}", v),
-            },
+            Literal::Expr(v) =>
+                write!(out, "{}", v),
             Literal::Path {
                 ref associated_to,
                 ref name,
@@ -488,16 +485,7 @@ impl Literal {
                     if let Some(known) = to_known_assoc_constant(path, name) {
                         return write!(out, "{}", known);
                     }
-                    let path_separator = match config.language {
-                        Language::Cython | Language::C => "_",
-                        Language::Cxx => {
-                            if config.structure.associated_constants_in_body {
-                                "::"
-                            } else {
-                                "_"
-                            }
-                        }
-                    };
+                    let path_separator = "_";
                     write!(out, "{}{}", export_name, path_separator)
                 }
                 write!(out, "{}", name)
@@ -526,31 +514,19 @@ impl Literal {
                 write!(out, ")");
             }
             Literal::Cast { ref ty, ref value } => {
-                out.write(if config.language == Language::Cython {
-                    "<"
-                } else {
-                    "("
-                });
+                out.write("cast[");
                 ty.write(config, out);
-                out.write(if config.language == Language::Cython {
-                    ">"
-                } else {
-                    ")"
-                });
+                out.write("](");
                 value.write(config, out);
+                out.write(")");
             }
             Literal::Struct {
                 export_name,
                 fields,
                 path,
             } => {
-                match config.language {
-                    Language::C => write!(out, "({})", export_name),
-                    Language::Cxx => write!(out, "{}", export_name),
-                    Language::Cython => write!(out, "<{}>", export_name),
-                }
+                write!(out, "{}(", export_name);
 
-                write!(out, "{{ ");
                 let mut is_first_field = true;
                 // In C++, same order as defined is required.
                 let ordered_fields = out.bindings().struct_field_names(path);
@@ -561,15 +537,12 @@ impl Literal {
                         } else {
                             is_first_field = false;
                         }
-                        match config.language {
-                            Language::Cxx => write!(out, "/* .{} = */ ", ordered_key),
-                            Language::C => write!(out, ".{} = ", ordered_key),
-                            Language::Cython => {}
-                        }
+                        write!(out, "{}: ", ordered_key);
+
                         lit.write(config, out);
                     }
                 }
-                write!(out, " }}");
+                write!(out, ")");
             }
         }
     }
@@ -685,10 +658,6 @@ impl Item for Constant {
         self.value.rename_for_config(config);
         self.ty.rename_for_config(config, &GenericParams::default()); // FIXME: should probably propagate something here
     }
-
-    fn resolve_declaration_types(&mut self, resolver: &DeclarationTypeResolver) {
-        self.ty.resolve_declaration_types(resolver);
-    }
 }
 
 impl Constant {
@@ -699,7 +668,7 @@ impl Constant {
         associated_to_struct: &Struct,
     ) {
         debug_assert!(self.associated_to.is_some());
-        debug_assert!(config.language == Language::Cxx);
+        //debug_assert!(config.language == Language::Cxx);
         debug_assert!(!associated_to_struct.is_transparent);
         debug_assert!(config.structure.associated_constants_in_body);
         debug_assert!(config.constant.allow_static_const);
@@ -731,11 +700,7 @@ impl Constant {
 
         let associated_to_transparent = associated_to_struct.map_or(false, |s| s.is_transparent);
 
-        let in_body = associated_to_struct.is_some()
-            && config.language == Language::Cxx
-            && config.structure.associated_constants_in_body
-            && config.constant.allow_static_const
-            && !associated_to_transparent;
+        let in_body = associated_to_struct.is_some() && false && !associated_to_transparent;
 
         let condition = self.cfg.to_condition(config);
         condition.write_before(config, out);
@@ -770,44 +735,8 @@ impl Constant {
             _ => &self.value,
         };
 
-        self.documentation.write(config, out);
-
-        let allow_constexpr = config.constant.allow_constexpr && self.value.can_be_constexpr();
-        match config.language {
-            Language::Cxx if config.constant.allow_static_const || allow_constexpr => {
-                if allow_constexpr {
-                    out.write("constexpr ")
-                }
-
-                if config.constant.allow_static_const {
-                    out.write(if in_body { "inline " } else { "static " });
-                }
-
-                if let Type::Ptr { is_const: true, .. } = self.ty {
-                    // Nothing.
-                } else {
-                    out.write("const ");
-                }
-
-                self.ty.write(config, out);
-                write!(out, " {} = ", name);
-                value.write(config, out);
-                write!(out, ";");
-            }
-            Language::Cxx | Language::C => {
-                write!(out, "#define {} ", name);
-                value.write(config, out);
-            }
-            Language::Cython => {
-                out.write("const ");
-                self.ty.write(config, out);
-                // For extern Cython declarations the initializer is ignored,
-                // but still useful as documentation, so we write it as a comment.
-                write!(out, " {} # = ", name);
-                value.write(config, out);
-            }
-        }
-
+        write!(out, "const {}* = ", name);
+        value.write(config, out);
         condition.write_after(config, out);
     }
 }

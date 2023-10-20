@@ -187,21 +187,25 @@ impl Source for Typedef {
 
         self.documentation.write(config, out);
 
+        write!(out, "type {}*", self.export_name());
+
         self.generic_params.write(config, out);
 
-        match config.language {
-            Language::Cxx => {
-                write!(out, "using {} = ", self.export_name());
-                self.aliased.write(config, out);
-            }
-            Language::C | Language::Cython => {
-                write!(out, "{} ", config.language.typedef());
-                Field::from_name_and_type(self.export_name().to_owned(), self.aliased.clone())
-                    .write(config, out);
-            }
-        }
+        // match config.language {
+        //     Language::Cxx => {
+        //         write!(out, "using {} = ", self.export_name());
+        //         self.aliased.write(config, out);
+        //     }
+        //     Language::C | Language::Cython => {
+        //         write!(out, "{} ", config.language.typedef());
+        //         Field::from_name_and_type(self.export_name().to_owned(), self.aliased.clone())
+        //             .write(config, out);
+        //     }
+        // }
 
-        out.write(";");
+        // out.write(";");
+        out.write(" = ");
+        self.aliased.write(config, out);
 
         condition.write_after(config, out);
     }
